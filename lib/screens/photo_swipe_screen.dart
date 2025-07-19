@@ -7,6 +7,7 @@ import '../services/photo_service.dart';
 import '../widgets/photo_card.dart';
 import 'dart:typed_data';
 import 'trash_screen.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 class PhotoSwipeScreen extends HookWidget {
   const PhotoSwipeScreen({Key? key}) : super(key: key);
@@ -16,9 +17,12 @@ class PhotoSwipeScreen extends HookWidget {
     final photoService = useMemoized(() => PhotoService(), []);
     final photos = useState<List<PhotoModel>>([]);
     final isLoading = useState(true);
+    final isLoadingMore = useState(false);
     final hasPermission = useState(false);
     final deletedCount = useState(0);
     final isUsingDummyData = useState(false);
+    final currentCardIndex = useState(0);
+    final scrollController = useMemoized(() => ScrollController(), []);
     final CardSwiperController controller = useMemoized(
       () => CardSwiperController(),
       [],
@@ -36,6 +40,34 @@ class PhotoSwipeScreen extends HookWidget {
         ),
       );
     }
+
+    // 추가 사진 로드
+    Future<void> loadMorePhotos() async {
+      if (isLoadingMore.value || isUsingDummyData.value) return;
+
+      isLoadingMore.value = true;
+      try {
+        final morePhotos = await photoService.loadMorePhotos();
+        if (morePhotos.isNotEmpty) {
+          photos.value = [...photos.value, ...morePhotos];
+        }
+      } finally {
+        isLoadingMore.value = false;
+      }
+    }
+
+    // 스크롤 이벤트 리스너
+    useEffect(() {
+      void onScroll() {
+        if (scrollController.position.pixels >=
+            scrollController.position.maxScrollExtent - 100) {
+          loadMorePhotos();
+        }
+      }
+
+      scrollController.addListener(onScroll);
+      return () => scrollController.removeListener(onScroll);
+    }, [scrollController]);
 
     // 사진 로드 함수
     Future<void> loadPhotos() async {
@@ -197,6 +229,7 @@ class PhotoSwipeScreen extends HookWidget {
           ? _buildNoPhotos(context)
           : Column(
               children: [
+                // 메인 카드 스와이퍼
                 Expanded(
                   child: CardSwiper(
                     controller: controller,
@@ -205,6 +238,17 @@ class PhotoSwipeScreen extends HookWidget {
                       return PhotoCard(photo: photos.value[index]);
                     },
                     onSwipe: (previousIndex, currentIndex, direction) {
+                      // 현재 인덱스 업데이트
+                      if (currentIndex != null) {
+                        currentCardIndex.value = currentIndex;
+
+                        // 마지막 카드에 가까워지면 추가 로드
+                        if (!isUsingDummyData.value &&
+                            currentIndex >= photos.value.length - 3) {
+                          loadMorePhotos();
+                        }
+                      }
+
                       if (direction == CardSwiperDirection.left) {
                         // 왼쪽으로 스와이프: 사진 삭제 (휴지통으로 이동)
                         deletePhoto(previousIndex);
@@ -217,6 +261,86 @@ class PhotoSwipeScreen extends HookWidget {
                     padding: const EdgeInsets.all(24.0),
                   ),
                 ),
+
+                // 하단 썸네일 리스트
+                Container(
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    itemCount:
+                        photos.value.length + (isLoadingMore.value ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      // 로딩 인디케이터 표시
+                      if (index == photos.value.length) {
+                        return Container(
+                          width: 80,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        );
+                      }
+
+                      final photo = photos.value[index];
+                      return GestureDetector(
+                        onTap: () {
+                          // 해당 인덱스로 메인 카드 이동
+                          // 현재 인덱스와 탭한 인덱스의 차이에 따라 왼쪽/오른쪽으로 스와이프
+                          final currentIndex = currentCardIndex.value;
+                          if (currentIndex < index) {
+                            // 오른쪽으로 이동 (다음 사진)
+                            for (int i = currentIndex; i < index; i++) {
+                              controller.swipeRight();
+                            }
+                          } else if (currentIndex > index) {
+                            // 왼쪽으로 이동 (이전 사진)
+                            for (int i = index; i < currentIndex; i++) {
+                              controller.swipeLeft();
+                            }
+                          }
+                          // 현재 인덱스 업데이트
+                          currentCardIndex.value = index;
+                        },
+                        child: Container(
+                          width: 80,
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: currentCardIndex.value == index
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Colors.transparent,
+                              width: 2,
+                            ),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _buildThumbnail(photo),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // 하단 컨트롤 버튼
                 _buildBottomControls(context, controller),
               ],
             ),
@@ -265,6 +389,77 @@ class PhotoSwipeScreen extends HookWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildThumbnail(PhotoModel photo) {
+    if (photo.asset is DummyAssetEntity) {
+      // 테스트 이미지인 경우 색상 박스 표시
+      final colors = [
+        Colors.blue,
+        Colors.red,
+        Colors.green,
+        Colors.orange,
+        Colors.purple,
+        Colors.teal,
+        Colors.amber,
+        Colors.indigo,
+      ];
+
+      // 에셋 ID를 기반으로 일관된 색상 선택
+      final index = photo.asset.id.hashCode % colors.length;
+      final color = colors[index.abs()];
+
+      return Container(
+        color: color,
+        child: Center(
+          child: Icon(
+            Icons.image,
+            size: 24,
+            color: Colors.white.withOpacity(0.7),
+          ),
+        ),
+      );
+    }
+
+    // 실제 이미지는 FutureBuilder로 썸네일 로드
+    return FutureBuilder<Uint8List?>(
+      future: photo.asset.thumbnailDataWithSize(
+        const ThumbnailSize.square(200),
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return Container(
+            color: Colors.grey[300],
+            child: const Center(
+              child: Icon(Icons.broken_image, color: Colors.red, size: 24),
+            ),
+          );
+        }
+
+        return Image.memory(
+          snapshot.data!,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[300],
+              child: const Center(
+                child: Icon(Icons.error, color: Colors.red, size: 24),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 

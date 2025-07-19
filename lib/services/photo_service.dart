@@ -141,6 +141,12 @@ class DummyAssetEntity extends AssetEntity {
 }
 
 class PhotoService {
+  // 페이징을 위한 변수
+  AssetPathEntity? _recentAlbum;
+  int _currentPage = 0;
+  final int _pageSize = 20;
+  bool _hasMorePhotos = true;
+
   // 휴지통에 있는 사진 목록
   final List<PhotoModel> _trashBin = [];
 
@@ -213,11 +219,14 @@ class PhotoService {
     return ps.isAuth;
   }
 
-  // 모든 사진 가져오기
+  // 사진 초기 로드
   Future<List<PhotoModel>> loadPhotos() async {
+    // 페이징 변수 초기화
+    _currentPage = 0;
+    _hasMorePhotos = true;
+
     final bool hasPermission = await requestPermission();
     if (!hasPermission) {
-      print('사진 접근 권한이 없습니다.');
       return [];
     }
 
@@ -234,26 +243,50 @@ class PhotoService {
       }
 
       // 최근 사진 앨범 선택
-      final AssetPathEntity recentAlbum = albums.first;
+      _recentAlbum = albums.first;
       print(
-        '앨범 로드: ${recentAlbum.name}, 사진 수: ${await recentAlbum.assetCountAsync}',
+        '앨범 로드: ${_recentAlbum!.name}, 사진 수: ${await _recentAlbum!.assetCountAsync}',
       );
 
-      // 앨범에서 사진 가져오기
-      final List<AssetEntity> assets = await recentAlbum.getAssetListRange(
-        start: 0,
-        end: 100, // 최대 100개 사진만 로드 (성능 향상을 위해)
-      );
-
-      print('로드된 사진 수: ${assets.length}');
-
-      // 사진 모델로 변환
-      return assets.map((asset) => PhotoModel(asset: asset)).toList();
+      // 첫 페이지 로드
+      return loadMorePhotos();
     } catch (e) {
       print('사진 로드 중 오류 발생: $e');
       return [];
     }
   }
+
+  // 더 많은 사진 로드 (페이징)
+  Future<List<PhotoModel>> loadMorePhotos() async {
+    if (!_hasMorePhotos || _recentAlbum == null) {
+      return [];
+    }
+
+    try {
+      // 앨범에서 사진 가져오기
+      final List<AssetEntity> assets = await _recentAlbum!.getAssetListRange(
+        start: _currentPage * _pageSize,
+        end: (_currentPage + 1) * _pageSize,
+      );
+
+      // 더 로드할 사진이 있는지 확인
+      _hasMorePhotos = assets.length == _pageSize;
+
+      // 페이지 증가
+      _currentPage++;
+
+      print('추가 사진 로드: ${assets.length}장, 총 페이지: $_currentPage');
+
+      // 사진 모델로 변환
+      return assets.map((asset) => PhotoModel(asset: asset)).toList();
+    } catch (e) {
+      print('추가 사진 로드 중 오류 발생: $e');
+      return [];
+    }
+  }
+
+  // 더 로드할 사진이 있는지 확인
+  bool get hasMorePhotos => _hasMorePhotos;
 
   // 사진 삭제
   Future<bool> deletePhoto(AssetEntity asset) async {
