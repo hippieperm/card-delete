@@ -12,6 +12,9 @@ import 'package:photo_manager/photo_manager.dart';
 class PhotoSwipeScreen extends HookWidget {
   const PhotoSwipeScreen({Key? key}) : super(key: key);
 
+  // 썸네일 캐시
+  static final Map<String, Uint8List> _thumbnailCache = {};
+
   @override
   Widget build(BuildContext context) {
     final photoService = useMemoized(() => PhotoService(), []);
@@ -56,6 +59,73 @@ class PhotoSwipeScreen extends HookWidget {
       } finally {
         isLoadingMore.value = false;
       }
+    }
+
+    // 썸네일 로드 및 캐싱 함수
+    Future<Uint8List?> loadThumbnail(PhotoModel photo, String cacheKey) async {
+      try {
+        // 이미 로드 중인지 확인 (중복 로드 방지)
+        if (_thumbnailCache.containsKey(cacheKey)) {
+          return _thumbnailCache[cacheKey];
+        }
+
+        // 작은 썸네일 크기로 로드
+        final thumbnailOption = ThumbnailOption(
+          size: const ThumbnailSize.square(200),
+          format: ThumbnailFormat.jpeg,
+          quality: 80, // 품질 낮춰 빠르게 로드
+        );
+
+        final data = await photo.asset.thumbnailDataWithOption(thumbnailOption);
+
+        if (data != null && data.isNotEmpty) {
+          // 캐시에 저장
+          _thumbnailCache[cacheKey] = data;
+          return data;
+        }
+
+        return null;
+      } catch (e) {
+        print('썸네일 로드 오류: $e');
+        return null;
+      }
+    }
+
+    // 여러 썸네일을 미리 로드하는 함수
+    void preloadThumbnails(int currentIdx) {
+      final photosList = photos.value;
+      // 현재 보이는 항목 주변의 썸네일을 미리 로드 (앞뒤로 5개씩)
+      final startIdx = (currentIdx - 5).clamp(0, photosList.length - 1);
+      final endIdx = (currentIdx + 5).clamp(0, photosList.length - 1);
+
+      for (int i = startIdx; i <= endIdx; i++) {
+        if (i == currentIdx) continue; // 현재 항목은 이미 로드 중
+
+        final photo = photosList[i];
+        if (photo.asset is DummyAssetEntity) continue; // 더미 이미지는 로드할 필요 없음
+
+        final cacheKey = 'thumb_${photo.asset.id}';
+        if (!_thumbnailCache.containsKey(cacheKey)) {
+          // 백그라운드에서 썸네일 로드
+          loadThumbnail(photo, cacheKey);
+        }
+      }
+    }
+
+    // 현재 카드 변경 시 호출되는 함수
+    void onCardChanged(int previousIndex, int? currentIndex) {
+      if (currentIndex == null) return;
+
+      // 현재 인덱스 업데이트
+      currentCardIndex.value = currentIndex;
+
+      // 마지막 카드에 가까워지면 추가 로드
+      if (!isUsingDummyData.value && currentIndex >= photos.value.length - 3) {
+        loadMorePhotos();
+      }
+
+      // 썸네일 미리 로드
+      preloadThumbnails(currentIndex);
     }
 
     // 스크롤 이벤트 리스너
@@ -195,6 +265,109 @@ class PhotoSwipeScreen extends HookWidget {
       return null;
     }, []);
 
+    // 썸네일 위젯 생성 함수
+    Widget buildThumbnail(PhotoModel photo) {
+      if (photo.asset is DummyAssetEntity) {
+        // 테스트 이미지인 경우 색상 박스 표시
+        final colors = [
+          Colors.blue,
+          Colors.red,
+          Colors.green,
+          Colors.orange,
+          Colors.purple,
+          Colors.teal,
+          Colors.amber,
+          Colors.indigo,
+        ];
+
+        // 에셋 ID를 기반으로 일관된 색상 선택
+        final index = photo.asset.id.hashCode % colors.length;
+        final color = colors[index.abs()];
+
+        return Container(
+          color: color,
+          child: Center(
+            child: Icon(
+              Icons.image,
+              size: 24,
+              color: Colors.white.withOpacity(0.7),
+            ),
+          ),
+        );
+      }
+
+      // 실제 이미지는 메모리 캐시를 활용하여 로드
+      final String cacheKey = 'thumb_${photo.asset.id}';
+
+      // 캐시된 이미지가 있는지 확인
+      if (_thumbnailCache.containsKey(cacheKey)) {
+        return Image.memory(
+          _thumbnailCache[cacheKey]!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          cacheWidth: 200, // 썸네일은 작은 크기로 캐싱
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[300],
+              child: const Center(
+                child: Icon(Icons.broken_image, color: Colors.red, size: 24),
+              ),
+            );
+          },
+        );
+      }
+
+      // 캐시된 이미지가 없으면 FutureBuilder로 로드
+      return FutureBuilder<Uint8List?>(
+        future: loadThumbnail(photo, cacheKey),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceVariant.withOpacity(0.3),
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          if (snapshot.hasError || snapshot.data == null) {
+            return Container(
+              color: Colors.grey[300],
+              child: const Center(
+                child: Icon(Icons.broken_image, color: Colors.red, size: 24),
+              ),
+            );
+          }
+
+          return Image.memory(
+            snapshot.data!,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            cacheWidth: 200, // 썸네일은 작은 크기로 캐싱
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                color: Colors.grey[300],
+                child: const Center(
+                  child: Icon(Icons.broken_image, color: Colors.red, size: 24),
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('사진 정리하기'),
@@ -298,16 +471,8 @@ class PhotoSwipeScreen extends HookWidget {
                           );
                         },
                     onSwipe: (previousIndex, currentIndex, direction) {
-                      // 현재 인덱스 업데이트
-                      if (currentIndex != null) {
-                        currentCardIndex.value = currentIndex;
-
-                        // 마지막 카드에 가까워지면 추가 로드
-                        if (!isUsingDummyData.value &&
-                            currentIndex >= photos.value.length - 3) {
-                          loadMorePhotos();
-                        }
-                      }
+                      // 현재 인덱스 업데이트 및 썸네일 미리 로드
+                      onCardChanged(previousIndex, currentIndex);
 
                       if (direction == CardSwiperDirection.left) {
                         // 왼쪽으로 스와이프: 사진 삭제 (휴지통으로 이동)
@@ -350,6 +515,8 @@ class PhotoSwipeScreen extends HookWidget {
                       horizontal: 8,
                       vertical: 8,
                     ),
+                    // 성능 최적화: 화면에 보이는 항목만 빌드
+                    cacheExtent: 500, // 캐시 확장
                     itemCount:
                         photos.value.length + (isLoadingMore.value ? 1 : 0),
                     itemBuilder: (context, index) {
@@ -390,6 +557,8 @@ class PhotoSwipeScreen extends HookWidget {
                           }
                           // 현재 인덱스 업데이트
                           currentCardIndex.value = index;
+                          // 썸네일 미리 로드
+                          preloadThumbnails(index);
                         },
                         child: Container(
                           width: 80,
@@ -404,7 +573,7 @@ class PhotoSwipeScreen extends HookWidget {
                             ),
                           ),
                           clipBehavior: Clip.antiAlias,
-                          child: _buildThumbnail(photo),
+                          child: buildThumbnail(photo),
                         ),
                       );
                     },
@@ -480,77 +649,6 @@ class PhotoSwipeScreen extends HookWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildThumbnail(PhotoModel photo) {
-    if (photo.asset is DummyAssetEntity) {
-      // 테스트 이미지인 경우 색상 박스 표시
-      final colors = [
-        Colors.blue,
-        Colors.red,
-        Colors.green,
-        Colors.orange,
-        Colors.purple,
-        Colors.teal,
-        Colors.amber,
-        Colors.indigo,
-      ];
-
-      // 에셋 ID를 기반으로 일관된 색상 선택
-      final index = photo.asset.id.hashCode % colors.length;
-      final color = colors[index.abs()];
-
-      return Container(
-        color: color,
-        child: Center(
-          child: Icon(
-            Icons.image,
-            size: 24,
-            color: Colors.white.withOpacity(0.7),
-          ),
-        ),
-      );
-    }
-
-    // 실제 이미지는 FutureBuilder로 썸네일 로드
-    return FutureBuilder<Uint8List?>(
-      future: photo.asset.thumbnailDataWithSize(
-        const ThumbnailSize.square(200),
-      ),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        }
-
-        if (snapshot.hasError || snapshot.data == null) {
-          return Container(
-            color: Colors.grey[300],
-            child: const Center(
-              child: Icon(Icons.broken_image, color: Colors.red, size: 24),
-            ),
-          );
-        }
-
-        return Image.memory(
-          snapshot.data!,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) {
-            return Container(
-              color: Colors.grey[300],
-              child: const Center(
-                child: Icon(Icons.error, color: Colors.red, size: 24),
-              ),
-            );
-          },
-        );
-      },
     );
   }
 

@@ -8,7 +8,7 @@ class PhotoCard extends StatelessWidget {
   final PhotoModel photo;
 
   // 이미지 캐싱을 위한 정적 맵
-  static final Map<String, Uint8List> _imageCache = {};
+  static final Map<String, Uint8List> imageCache = {};
 
   const PhotoCard({Key? key, required this.photo}) : super(key: key);
 
@@ -136,9 +136,9 @@ class PhotoCard extends StatelessWidget {
 
     // 캐시에서 이미지 확인
     final String cacheKey = photo.asset.id;
-    if (_imageCache.containsKey(cacheKey)) {
+    if (imageCache.containsKey(cacheKey)) {
       return Image.memory(
-        _imageCache[cacheKey]!,
+        imageCache[cacheKey]!,
         fit: BoxFit.cover,
         gaplessPlayback: true,
         cacheWidth: 1000, // 캐싱 최적화
@@ -162,7 +162,9 @@ class PhotoCard extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return Container(
-            color: Colors.grey[100],
+            color: Theme.of(
+              context,
+            ).colorScheme.surfaceVariant.withOpacity(0.3),
             child: const Center(
               child: SizedBox(
                 width: 40,
@@ -232,16 +234,16 @@ class PhotoCard extends StatelessWidget {
     final String cacheKey = photo.asset.id;
 
     // 캐시에서 이미지 확인
-    if (_imageCache.containsKey(cacheKey)) {
-      return _imageCache[cacheKey];
+    if (imageCache.containsKey(cacheKey)) {
+      return imageCache[cacheKey];
     }
 
     try {
       // 캐싱을 위한 옵션 설정
       final ThumbnailOption option = ThumbnailOption(
-        size: const ThumbnailSize.square(500),
+        size: const ThumbnailSize.square(800),
         format: ThumbnailFormat.jpeg,
-        quality: 95,
+        quality: 90,
       );
 
       // 캐싱된 썸네일 시도
@@ -249,7 +251,7 @@ class PhotoCard extends StatelessWidget {
 
       if (data != null && data.isNotEmpty) {
         // 캐시에 저장
-        _imageCache[cacheKey] = data;
+        imageCache[cacheKey] = data;
         return data;
       }
 
@@ -257,7 +259,7 @@ class PhotoCard extends StatelessWidget {
       final originData = await photo.asset.originBytes;
       if (originData != null && originData.isNotEmpty) {
         // 캐시에 저장
-        _imageCache[cacheKey] = originData;
+        imageCache[cacheKey] = originData;
         return originData;
       }
 
