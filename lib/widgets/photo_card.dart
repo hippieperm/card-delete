@@ -14,93 +14,104 @@ class PhotoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return RepaintBoundary(
       child: Card(
         elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: AbsorbPointer(
-            absorbing: true,
-            child: Stack(
-              children: [
-                // 사진 표시
-                Positioned.fill(child: _buildPhotoWidget()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        clipBehavior: Clip.antiAlias,
+        child: AbsorbPointer(
+          absorbing: true,
+          child: Stack(
+            children: [
+              // 사진 표시
+              Positioned.fill(child: _buildPhotoWidget()),
 
-                // 휴지통 표시 (휴지통에 있는 경우)
-                if (photo.isInTrash)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withOpacity(0.8),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.delete, color: Colors.white, size: 16),
-                          SizedBox(width: 4),
-                          Text(
-                            '휴지통',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                // 사진 정보 표시 (하단)
+              // 휴지통 표시 (휴지통에 있는 경우)
+              if (photo.isInTrash)
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
+                  top: 12,
+                  right: 12,
                   child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.8),
-                          Colors.transparent,
-                        ],
-                      ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _formatDate(photo.asset.createDateTime),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                    decoration: BoxDecoration(
+                      color: colorScheme.error.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
                         ),
-                        const SizedBox(height: 4),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.delete,
+                          color: colorScheme.onError,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
                         Text(
-                          '${photo.asset.width} x ${photo.asset.height}',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
+                          '휴지통',
+                          style: TextStyle(
+                            color: colorScheme.onError,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+
+              // 사진 정보 표시 (하단)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.8),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _formatDate(photo.asset.createDateTime),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${photo.asset.width} x ${photo.asset.height}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

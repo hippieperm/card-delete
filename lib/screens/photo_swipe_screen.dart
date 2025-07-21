@@ -210,7 +210,9 @@ class PhotoSwipeScreen extends HookWidget {
           IconButton(
             icon: Icon(
               isUsingDummyData.value ? Icons.image : Icons.image_outlined,
-              color: isUsingDummyData.value ? Colors.blue : null,
+              color: isUsingDummyData.value
+                  ? Theme.of(context).colorScheme.primary
+                  : null,
             ),
             onPressed: switchToTestMode,
             tooltip: '테스트 이미지 표시',
@@ -224,7 +226,11 @@ class PhotoSwipeScreen extends HookWidget {
         ],
       ),
       body: isLoading.value
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: CircularProgressIndicator(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            )
           : !hasPermission.value
           ? _buildPermissionDenied(context)
           : photos.value.isEmpty
@@ -283,10 +289,12 @@ class PhotoSwipeScreen extends HookWidget {
                 Container(
                   height: 100,
                   decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
+                    color: Theme.of(context).colorScheme.surface,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.shadow.withOpacity(0.1),
                         blurRadius: 4,
                         offset: const Offset(0, -2),
                       ),
@@ -307,11 +315,14 @@ class PhotoSwipeScreen extends HookWidget {
                         return Container(
                           width: 80,
                           margin: const EdgeInsets.symmetric(horizontal: 4),
-                          child: const Center(
+                          child: Center(
                             child: SizedBox(
                               width: 24,
                               height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
                             ),
                           ),
                         );
@@ -341,7 +352,7 @@ class PhotoSwipeScreen extends HookWidget {
                           width: 80,
                           margin: const EdgeInsets.symmetric(horizontal: 4),
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: currentCardIndex.value == index
                                   ? Theme.of(context).colorScheme.primary
@@ -369,24 +380,36 @@ class PhotoSwipeScreen extends HookWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.no_photography, size: 80, color: Colors.grey),
+          Icon(
+            Icons.no_photography,
+            size: 80,
+            color: Theme.of(context).colorScheme.secondary.withOpacity(0.7),
+          ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             '사진 접근 권한이 필요합니다',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             '설정에서 사진 접근 권한을 허용해주세요',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 16,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
+          FilledButton.icon(
             onPressed: () {
               // 앱 설정 화면으로 이동
               openAppSettings();
             },
-            child: const Text('설정으로 이동'),
+            icon: const Icon(Icons.settings),
+            label: const Text('설정으로 이동'),
           ),
         ],
       ),
@@ -394,15 +417,23 @@ class PhotoSwipeScreen extends HookWidget {
   }
 
   Widget _buildNoPhotos(BuildContext context) {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.photo_library, size: 80, color: Colors.grey),
-          SizedBox(height: 16),
+          Icon(
+            Icons.photo_library,
+            size: 80,
+            color: Theme.of(context).colorScheme.secondary.withOpacity(0.7),
+          ),
+          const SizedBox(height: 16),
           Text(
             '사진이 없습니다',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ],
       ),
@@ -484,28 +515,30 @@ class PhotoSwipeScreen extends HookWidget {
     BuildContext context,
     CardSwiperController controller,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          ElevatedButton.icon(
+          FilledButton.icon(
             onPressed: () => controller.swipeLeft(),
             icon: const Icon(Icons.delete),
             label: const Text('삭제'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
-          ElevatedButton.icon(
+          FilledButton.icon(
             onPressed: () => controller.swipeRight(),
             icon: const Icon(Icons.arrow_forward),
             label: const Text('다음'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.primary,
+              foregroundColor: colorScheme.onPrimary,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
           ),
