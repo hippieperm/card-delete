@@ -561,28 +561,56 @@ class PhotoSwipeScreen extends HookWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.symmetric(vertical: 30.0, horizontal: 24.0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          FilledButton.icon(
-            onPressed: () => controller.swipeLeft(),
-            icon: const Icon(Icons.delete),
-            label: const Text('삭제'),
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.error,
-              foregroundColor: colorScheme.onError,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          // 삭제 버튼
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8.0),
+              child: FilledButton.tonalIcon(
+                onPressed: () => controller.swipeLeft(),
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('삭제'),
+                style:
+                    FilledButton.styleFrom(
+                      backgroundColor: colorScheme.errorContainer,
+                      foregroundColor: colorScheme.onErrorContainer,
+                      minimumSize: const Size.fromHeight(56),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 0,
+                    ).copyWith(
+                      overlayColor: MaterialStateProperty.resolveWith<Color?>(
+                        (states) => states.contains(MaterialState.pressed)
+                            ? colorScheme.error.withOpacity(0.1)
+                            : null,
+                      ),
+                    ),
+              ),
             ),
           ),
-          FilledButton.icon(
-            onPressed: () => controller.swipeRight(),
-            icon: const Icon(Icons.arrow_forward),
-            label: const Text('다음'),
-            style: FilledButton.styleFrom(
-              backgroundColor: colorScheme.primary,
-              foregroundColor: colorScheme.onPrimary,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+
+          // 다음 버튼
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: FilledButton.icon(
+                onPressed: () => controller.swipeRight(),
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: const Text('다음'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: colorScheme.primary,
+                  foregroundColor: colorScheme.onPrimary,
+                  minimumSize: const Size.fromHeight(56),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 0,
+                ),
+              ),
             ),
           ),
         ],
