@@ -7,90 +7,101 @@ import '../services/photo_service.dart';
 class PhotoCard extends StatelessWidget {
   final PhotoModel photo;
 
+  // 이미지 캐싱을 위한 정적 맵
+  static final Map<String, Uint8List> _imageCache = {};
+
   const PhotoCard({Key? key, required this.photo}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(15),
-        child: Stack(
-          children: [
-            // 사진 표시
-            Positioned.fill(child: _buildPhotoWidget()),
+    return RepaintBoundary(
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: AbsorbPointer(
+            absorbing: true,
+            child: Stack(
+              children: [
+                // 사진 표시
+                Positioned.fill(child: _buildPhotoWidget()),
 
-            // 휴지통 표시 (휴지통에 있는 경우)
-            if (photo.isInTrash)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                // 휴지통 표시 (휴지통에 있는 경우)
+                if (photo.isInTrash)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.delete, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            '휴지통',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.delete, color: Colors.white, size: 16),
-                      SizedBox(width: 4),
-                      Text(
-                        '휴지통',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+
+                // 사진 정보 표시 (하단)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.8),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatDate(photo.asset.createDateTime),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 4),
+                        Text(
+                          '${photo.asset.width} x ${photo.asset.height}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-
-            // 사진 정보 표시 (하단)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black.withOpacity(0.8), Colors.transparent],
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _formatDate(photo.asset.createDateTime),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${photo.asset.width} x ${photo.asset.height}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -112,16 +123,46 @@ class PhotoCard extends StatelessWidget {
       );
     }
 
-    // 실제 이미지 로드 시도
+    // 캐시에서 이미지 확인
+    final String cacheKey = photo.asset.id;
+    if (_imageCache.containsKey(cacheKey)) {
+      return Image.memory(
+        _imageCache[cacheKey]!,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        cacheWidth: 1000, // 캐싱 최적화
+        cacheHeight: 1000, // 캐싱 최적화
+        filterQuality: FilterQuality.medium, // 렌더링 품질
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.grey[300],
+            child: const Center(
+              child: Icon(Icons.error, color: Colors.red, size: 50),
+            ),
+          );
+        },
+      );
+    }
+
+    // 캐시에 없는 경우 FutureBuilder로 로드
     return FutureBuilder<Uint8List?>(
+      key: ValueKey('photo_future_${photo.asset.id}'), // 키를 사용하여 불필요한 재구축 방지
       future: _loadThumbnail(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return Container(
+            color: Colors.grey[100],
+            child: const Center(
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+            ),
+          );
         }
 
         if (snapshot.hasError || snapshot.data == null) {
-          print('사진 로드 오류: ${snapshot.error}');
           return Container(
             color: Colors.grey[200],
             child: const Center(
@@ -140,8 +181,11 @@ class PhotoCard extends StatelessWidget {
         return Image.memory(
           snapshot.data!,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
+          cacheWidth: 1000, // 캐싱 최적화
+          cacheHeight: 1000, // 캐싱 최적화
+          filterQuality: FilterQuality.medium, // 렌더링 품질
           errorBuilder: (context, error, stackTrace) {
-            print('이미지 렌더링 오류: $error');
             return Container(
               color: Colors.grey[300],
               child: const Center(
@@ -174,23 +218,41 @@ class PhotoCard extends StatelessWidget {
 
   // 썸네일 로드 함수
   Future<Uint8List?> _loadThumbnail() async {
+    final String cacheKey = photo.asset.id;
+
+    // 캐시에서 이미지 확인
+    if (_imageCache.containsKey(cacheKey)) {
+      return _imageCache[cacheKey];
+    }
+
     try {
-      // 먼저 작은 썸네일 시도
-      final data = await photo.asset.thumbnailDataWithSize(
-        const ThumbnailSize.square(500),
+      // 캐싱을 위한 옵션 설정
+      final ThumbnailOption option = ThumbnailOption(
+        size: const ThumbnailSize.square(500),
+        format: ThumbnailFormat.jpeg,
+        quality: 95,
       );
 
-      if (data != null && data.isNotEmpty) return data;
+      // 캐싱된 썸네일 시도
+      final data = await photo.asset.thumbnailDataWithOption(option);
+
+      if (data != null && data.isNotEmpty) {
+        // 캐시에 저장
+        _imageCache[cacheKey] = data;
+        return data;
+      }
 
       // 실패하면 원본 데이터 시도
       final originData = await photo.asset.originBytes;
-      if (originData != null && originData.isNotEmpty) return originData;
+      if (originData != null && originData.isNotEmpty) {
+        // 캐시에 저장
+        _imageCache[cacheKey] = originData;
+        return originData;
+      }
 
       // 모두 실패하면 null 반환
-      print('썸네일과 원본 모두 로드 실패');
       return null;
     } catch (e) {
-      print('썸네일 로드 중 오류: $e');
       return null;
     }
   }

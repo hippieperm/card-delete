@@ -27,6 +27,8 @@ class PhotoSwipeScreen extends HookWidget {
       () => CardSwiperController(),
       [],
     );
+    // 드래그 중인지 여부를 추적하는 상태
+    final isDragging = useState(false);
 
     // 테스트 모드로 전환
     void switchToTestMode() {
@@ -234,9 +236,16 @@ class PhotoSwipeScreen extends HookWidget {
                   child: CardSwiper(
                     controller: controller,
                     cardsCount: photos.value.length,
-                    cardBuilder: (context, index, _, __) {
-                      return PhotoCard(photo: photos.value[index]);
-                    },
+                    cardBuilder:
+                        (context, index, percentThresholdX, percentThresholdY) {
+                          // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
+                          return RepaintBoundary(
+                            key: ValueKey(
+                              'photo_card_${photos.value[index].asset.id}',
+                            ),
+                            child: PhotoCard(photo: photos.value[index]),
+                          );
+                        },
                     onSwipe: (previousIndex, currentIndex, direction) {
                       // 현재 인덱스 업데이트
                       if (currentIndex != null) {
@@ -256,9 +265,17 @@ class PhotoSwipeScreen extends HookWidget {
                       // 오른쪽으로 스와이프: 다음 사진으로 넘어감
                       return true;
                     },
+                    // 스와이프 방향 변경 이벤트는 지원하지 않는 것 같습니다.
+                    // 대신 다른 방식으로 해결해보겠습니다.
                     numberOfCardsDisplayed: 1,
                     backCardOffset: const Offset(0, 0),
                     padding: const EdgeInsets.all(24.0),
+                    allowedSwipeDirection:
+                        const AllowedSwipeDirection.symmetric(horizontal: true),
+                    threshold: 50, // 스와이프 감도 조정 (높을수록 덜 민감)
+                    maxAngle: 30, // 최대 회전 각도 제한
+                    isLoop: true, // 무한 루프 활성화
+                    duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
                   ),
                 ),
 
