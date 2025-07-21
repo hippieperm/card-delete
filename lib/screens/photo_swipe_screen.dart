@@ -245,11 +245,56 @@ class PhotoSwipeScreen extends HookWidget {
                     cardBuilder:
                         (context, index, percentThresholdX, percentThresholdY) {
                           // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
-                          return RepaintBoundary(
+                          final card = RepaintBoundary(
                             key: ValueKey(
                               'photo_card_${photos.value[index].asset.id}',
                             ),
                             child: PhotoCard(photo: photos.value[index]),
+                          );
+
+                          // 스와이프 방향에 따른 오버레이 추가
+                          if (percentThresholdX.abs() < 0.05) {
+                            // 스와이프가 거의 없는 경우 기본 카드만 표시
+                            return card;
+                          }
+
+                          // 스와이프 방향 및 진행률
+                          final isLeftSwipe = percentThresholdX < 0;
+                          final progress = percentThresholdX.abs().clamp(
+                            0.0,
+                            1.0,
+                          );
+
+                          // 아이콘 크기 계산 (정수로 변환)
+                          final iconSize = (24 + (56 * progress)).toInt();
+
+                          return Stack(
+                            children: [
+                              // 기본 카드
+                              card,
+
+                              // 스와이프 방향에 따른 오버레이
+                              Positioned.fill(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: isLeftSwipe
+                                        ? Theme.of(context).colorScheme.error
+                                              .withOpacity(0.5 * progress)
+                                        : Theme.of(context).colorScheme.primary
+                                              .withOpacity(0.3 * progress),
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      isLeftSwipe
+                                          ? Icons.delete_forever
+                                          : Icons.arrow_forward,
+                                      color: Colors.white,
+                                      size: iconSize.toDouble(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           );
                         },
                     onSwipe: (previousIndex, currentIndex, direction) {
@@ -271,15 +316,13 @@ class PhotoSwipeScreen extends HookWidget {
                       // 오른쪽으로 스와이프: 다음 사진으로 넘어감
                       return true;
                     },
-                    // 스와이프 방향 변경 이벤트는 지원하지 않는 것 같습니다.
-                    // 대신 다른 방식으로 해결해보겠습니다.
                     numberOfCardsDisplayed: 1,
                     backCardOffset: const Offset(0, 0),
                     padding: const EdgeInsets.all(24.0),
                     allowedSwipeDirection:
                         const AllowedSwipeDirection.symmetric(horizontal: true),
                     threshold: 50, // 스와이프 감도 조정 (높을수록 덜 민감)
-                    maxAngle: 30, // 최대 회전 각도 제한
+                    maxAngle: 30.0, // 최대 회전 각도 제한
                     isLoop: true, // 무한 루프 활성화
                     duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
                   ),
