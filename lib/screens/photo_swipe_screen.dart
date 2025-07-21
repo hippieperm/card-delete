@@ -32,19 +32,6 @@ class PhotoSwipeScreen extends HookWidget {
     // 드래그 중인지 여부를 추적하는 상태
     final isDragging = useState(false);
 
-    // 테스트 모드로 전환
-    void switchToTestMode() {
-      isUsingDummyData.value = true;
-      photos.value = photoService.getDummyPhotos();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('테스트 이미지를 표시합니다.'),
-          backgroundColor: Colors.blue,
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
-
     // 추가 사진 로드
     Future<void> loadMorePhotos() async {
       if (isLoadingMore.value || isUsingDummyData.value) return;
@@ -82,23 +69,7 @@ class PhotoSwipeScreen extends HookWidget {
 
         if (permissionGranted) {
           final loadedPhotos = await photoService.loadPhotos();
-
-          if (loadedPhotos.isEmpty) {
-            // 실제 사진이 없으면 테스트 데이터 사용
-            isUsingDummyData.value = true;
-            photos.value = photoService.getDummyPhotos();
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('실제 사진이 없어 테스트 이미지를 표시합니다.'),
-                backgroundColor: Colors.blue,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          } else {
-            isUsingDummyData.value = false;
-            photos.value = loadedPhotos;
-          }
+          photos.value = loadedPhotos;
 
           if (photos.value.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -124,10 +95,6 @@ class PhotoSwipeScreen extends HookWidget {
             backgroundColor: Colors.red,
           ),
         );
-
-        // 오류 발생 시 테스트 데이터 사용
-        isUsingDummyData.value = true;
-        photos.value = photoService.getDummyPhotos();
       } finally {
         isLoading.value = false;
       }
@@ -188,12 +155,7 @@ class PhotoSwipeScreen extends HookWidget {
 
     // 초기 데이터 로드
     useEffect(() {
-      loadPhotos().then((_) {
-        // 사진이 없으면 자동으로 테스트 모드로 전환
-        if (photos.value.isEmpty) {
-          switchToTestMode();
-        }
-      });
+      loadPhotos();
       return null;
     }, []);
 
@@ -207,17 +169,6 @@ class PhotoSwipeScreen extends HookWidget {
             icon: const Icon(Icons.delete_outline),
             onPressed: navigateToTrash,
             tooltip: '휴지통',
-          ),
-          // 테스트 모드 버튼
-          IconButton(
-            icon: Icon(
-              isUsingDummyData.value ? Icons.image : Icons.image_outlined,
-              color: isUsingDummyData.value
-                  ? Theme.of(context).colorScheme.primary
-                  : null,
-            ),
-            onPressed: switchToTestMode,
-            tooltip: '테스트 이미지 표시',
           ),
           // 새로고침 버튼
           IconButton(

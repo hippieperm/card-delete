@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/photo_swipe_screen.dart';
 import 'package:dynamic_color/dynamic_color.dart';
+import 'screens/splash_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,7 +89,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
           themeMode: ThemeMode.dark, // 다크모드를 기본으로 설정
-          home: const PhotoSwipeScreen(),
+          home: const SplashScreen(),
         );
       },
     );
