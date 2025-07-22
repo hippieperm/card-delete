@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'photo_swipe_screen.dart';
+import '../main.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -72,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
             pageBuilder: (context, animation, secondaryAnimation) =>
-                const PhotoSwipeScreen(),
+                const HomeScreen(),
             transitionsBuilder:
                 (context, animation, secondaryAnimation, child) {
                   const begin = Offset(1.0, 0.0);
