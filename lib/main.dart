@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'screens/photo_swipe_screen.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'screens/splash_screen.dart';
+import 'screens/photo_swipe_screen.dart';
+import 'screens/grid_view_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -65,6 +66,18 @@ class MyApp extends StatelessWidget {
                 ),
               ),
             ),
+            navigationBarTheme: NavigationBarThemeData(
+              labelTextStyle: MaterialStateProperty.all(
+                const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+              iconTheme: MaterialStateProperty.all(
+                const IconThemeData(size: 24),
+              ),
+              elevation: 3,
+              indicatorColor: lightColorScheme.primaryContainer,
+              labelBehavior:
+                  NavigationDestinationLabelBehavior.onlyShowSelected,
+            ),
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
@@ -87,11 +100,58 @@ class MyApp extends StatelessWidget {
                 ),
               ),
             ),
+            navigationBarTheme: NavigationBarThemeData(
+              labelTextStyle: MaterialStateProperty.all(
+                const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+              ),
+              iconTheme: MaterialStateProperty.all(
+                const IconThemeData(size: 24),
+              ),
+              elevation: 3,
+              indicatorColor: darkColorScheme.primaryContainer,
+              labelBehavior:
+                  NavigationDestinationLabelBehavior.onlyShowSelected,
+            ),
           ),
           themeMode: ThemeMode.dark, // 다크모드를 기본으로 설정
           home: const SplashScreen(),
         );
       },
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int _selectedIndex = 0;
+
+  static final List<Widget> _screens = [
+    const PhotoSwipeScreen(),
+    const GridViewScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.swipe), label: '스와이프'),
+          NavigationDestination(icon: Icon(Icons.grid_view), label: '그리드'),
+        ],
+      ),
     );
   }
 }
