@@ -8,9 +8,12 @@ import '../widgets/photo_card.dart';
 import 'dart:typed_data';
 import 'trash_screen.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'grid_view_screen.dart';
 
 class PhotoSwipeScreen extends HookWidget {
-  const PhotoSwipeScreen({Key? key}) : super(key: key);
+  final int initialIndex;
+
+  const PhotoSwipeScreen({Key? key, this.initialIndex = 0}) : super(key: key);
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -24,7 +27,7 @@ class PhotoSwipeScreen extends HookWidget {
     final hasPermission = useState(false);
     final deletedCount = useState(0);
     final isUsingDummyData = useState(false);
-    final currentCardIndex = useState(0);
+    final currentCardIndex = useState(initialIndex);
     final CardSwiperController controller = useMemoized(
       () => CardSwiperController(),
       [],
@@ -153,6 +156,17 @@ class PhotoSwipeScreen extends HookWidget {
       });
     }
 
+    // 그리드 화면으로 이동
+    void navigateToGrid() {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const GridViewScreen()),
+      ).then((_) {
+        // 그리드 화면에서 돌아오면 목록 새로고침
+        loadPhotos();
+      });
+    }
+
     // 초기 데이터 로드
     useEffect(() {
       loadPhotos();
@@ -164,6 +178,12 @@ class PhotoSwipeScreen extends HookWidget {
         title: const Text('사진 정리하기'),
         centerTitle: true,
         actions: [
+          // 그리드 보기 버튼
+          IconButton(
+            icon: const Icon(Icons.grid_view),
+            onPressed: navigateToGrid,
+            tooltip: '그리드 보기',
+          ),
           // 휴지통 버튼
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -270,6 +290,7 @@ class PhotoSwipeScreen extends HookWidget {
                     maxAngle: 30.0, // 최대 회전 각도 제한
                     isLoop: true, // 무한 루프 활성화
                     duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
+                    initialIndex: initialIndex,
                   ),
                 ),
 
