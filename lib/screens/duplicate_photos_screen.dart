@@ -18,19 +18,18 @@ class DuplicatePhotosScreen extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 상태 변수
-    final isScanning = useState(false);
-    final scanProgress = useState(0.0);
     final duplicateGroups = useState<Map<String, List<PhotoModel>>>({});
     final expandedGroups = useState<Set<String>>({});
     final selectedPhotos = useState<Set<String>>({});
+    final isScanning = useState<bool>(false);
+    final scanProgress = useState<double>(0.0);
 
     // 중복 사진 스캔
-    Future<void> scanForDuplicates() async {
-      if (isScanning.value) return;
-
+    void scanForDuplicates() async {
       isScanning.value = true;
       scanProgress.value = 0.0;
+      duplicateGroups.value = {};
+      selectedPhotos.value = {};
 
       try {
         final result = await photoService.findDuplicatePhotos(
@@ -42,30 +41,20 @@ class DuplicatePhotosScreen extends HookWidget {
 
         duplicateGroups.value = result;
 
-        // 첫 번째 그룹 자동 확장
-        if (result.isNotEmpty) {
-          expandedGroups.value = {result.keys.first};
+        // 처음에 모든 그룹을 펼침
+        final newExpandedGroups = <String>{};
+        for (final groupId in duplicateGroups.value.keys) {
+          newExpandedGroups.add(groupId);
         }
+        expandedGroups.value = newExpandedGroups;
       } finally {
         isScanning.value = false;
       }
     }
 
     // 선택된 중복 사진 삭제
-    Future<void> deleteSelectedDuplicates() async {
+    void deleteSelectedDuplicates() async {
       if (selectedPhotos.value.isEmpty) return;
-
-      // 확인 다이얼로그 표시
-      final confirm = await CustomDialog.show(
-        context: context,
-        title: '중복 사진 삭제',
-        message: '${selectedPhotos.value.length}장의 중복 사진을 휴지통으로 이동하시겠습니까?',
-        confirmText: '삭제',
-        icon: Icons.delete_outline,
-        isDestructive: true,
-      );
-
-      if (confirm != true) return;
 
       // 선택된 사진 찾기
       final photosToDelete = <PhotoModel>[];
@@ -77,22 +66,30 @@ class DuplicatePhotosScreen extends HookWidget {
         }
       }
 
-      // 삭제 처리
       await photoService.deleteDuplicatePhotos(photosToDelete);
 
-      // 상태 업데이트
+      // 중복 그룹 업데이트
       duplicateGroups.value = photoService.getDuplicateGroups();
       selectedPhotos.value = {};
 
-      // 완료 메시지
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${photosToDelete.length}장의 중복 사진이 휴지통으로 이동되었습니다'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
+      // 빈 그룹 정리
+      duplicateGroups.value.removeWhere((_, photos) => photos.length <= 1);
+
+      // 스낵바 대신 다이얼로그로 알림
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('중복 사진 삭제 완료'),
+          content: Text('${photosToDelete.length}장의 중복 사진이 휴지통으로 이동되었습니다.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
     }
 
     // 그룹 확장/축소 토글
@@ -122,10 +119,28 @@ class DuplicatePhotosScreen extends HookWidget {
       if (group.length <= 1) return;
 
       final newSelection = Set<String>.from(selectedPhotos.value);
-      // 첫 번째 항목을 제외한 모든 항목 선택
+
+      // 현재 그룹에서 선택된 사진 수 확인
+      int selectedCount = 0;
       for (int i = 1; i < group.length; i++) {
-        newSelection.add(group[i].asset.id);
+        if (newSelection.contains(group[i].asset.id)) {
+          selectedCount++;
+        }
       }
+
+      // 모든 사진이 선택되어 있으면 모두 해제, 아니면 모두 선택
+      if (selectedCount == group.length - 1) {
+        // 모두 선택되어 있으면 모두 해제
+        for (int i = 1; i < group.length; i++) {
+          newSelection.remove(group[i].asset.id);
+        }
+      } else {
+        // 일부만 선택되어 있으면 모두 선택
+        for (int i = 1; i < group.length; i++) {
+          newSelection.add(group[i].asset.id);
+        }
+      }
+
       selectedPhotos.value = newSelection;
     }
 
@@ -140,16 +155,76 @@ class DuplicatePhotosScreen extends HookWidget {
 
     // 모든 그룹에서 중복 항목 선택 (각 그룹의 첫 번째 항목 제외)
     void selectAllDuplicates() {
-      final newSelection = <String>{};
+      final newSelection = Set<String>.from(selectedPhotos.value);
+      int totalDuplicates = 0;
+      int selectedDuplicates = 0;
+
+      // 총 중복 사진 수와 현재 선택된 중복 사진 수 확인
       for (final group in duplicateGroups.value.values) {
         if (group.length <= 1) continue;
 
-        // 첫 번째 항목을 제외한 모든 항목 선택
         for (int i = 1; i < group.length; i++) {
-          newSelection.add(group[i].asset.id);
+          totalDuplicates++;
+          if (newSelection.contains(group[i].asset.id)) {
+            selectedDuplicates++;
+          }
         }
       }
+
+      // 모든 중복 사진이 선택되어 있으면 모두 해제, 아니면 모두 선택
+      if (selectedDuplicates == totalDuplicates) {
+        // 모든 중복 사진 해제
+        for (final group in duplicateGroups.value.values) {
+          if (group.length <= 1) continue;
+
+          for (int i = 1; i < group.length; i++) {
+            newSelection.remove(group[i].asset.id);
+          }
+        }
+      } else {
+        // 모든 중복 사진 선택
+        for (final group in duplicateGroups.value.values) {
+          if (group.length <= 1) continue;
+
+          for (int i = 1; i < group.length; i++) {
+            newSelection.add(group[i].asset.id);
+          }
+        }
+      }
+
       selectedPhotos.value = newSelection;
+    }
+
+    // 모든 중복 사진이 선택되어 있는지 확인하는 헬퍼 함수
+    bool _isAllDuplicatesSelected() {
+      int totalDuplicates = 0;
+      int selectedDuplicates = 0;
+
+      for (final group in duplicateGroups.value.values) {
+        if (group.length <= 1) continue;
+
+        for (int i = 1; i < group.length; i++) {
+          totalDuplicates++;
+          if (selectedPhotos.value.contains(group[i].asset.id)) {
+            selectedDuplicates++;
+          }
+        }
+      }
+
+      return totalDuplicates > 0 && selectedDuplicates == totalDuplicates;
+    }
+
+    // 특정 그룹의 모든 사진이 선택되어 있는지 확인하는 헬퍼 함수
+    bool _isAllInGroupSelected(List<PhotoModel> group) {
+      if (group.length <= 1) return false;
+
+      for (int i = 1; i < group.length; i++) {
+        if (!selectedPhotos.value.contains(group[i].asset.id)) {
+          return false;
+        }
+      }
+
+      return true;
     }
 
     // 초기 스캔 실행
@@ -173,9 +248,11 @@ class DuplicatePhotosScreen extends HookWidget {
           // 모두 선택 버튼
           if (duplicateGroups.value.isNotEmpty && !isScanning.value)
             IconButton(
-              icon: const Icon(Icons.select_all),
+              icon: Icon(
+                _isAllDuplicatesSelected() ? Icons.deselect : Icons.select_all,
+              ),
               onPressed: selectAllDuplicates,
-              tooltip: '모든 중복 사진 선택',
+              tooltip: _isAllDuplicatesSelected() ? '모두 선택 해제' : '모든 중복 사진 선택',
             ),
         ],
       ),
