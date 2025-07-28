@@ -155,13 +155,13 @@ class _AdaptiveBackgroundState extends State<AdaptiveBackground> {
       decoration: BoxDecoration(
         gradient: RadialGradient(
           center: Alignment.center,
-          radius: 1.5,
+          radius: 2.5, // 반경을 더 크게 조정 (1.5 -> 2.5)
           colors: [
-            _primaryColor.withOpacity(0.8),
-            _secondaryColor.withOpacity(0.3),
+            _primaryColor.withOpacity(0.9), // 투명도 증가 (0.8 -> 0.9)
+            _secondaryColor.withOpacity(0.5), // 투명도 증가 (0.3 -> 0.5)
             colorScheme.background.withOpacity(0.95),
           ],
-          stops: const [0.0, 0.4, 1.0],
+          stops: const [0.0, 0.5, 1.0], // 중간 색상이 더 넓게 퍼지도록 조정 (0.4 -> 0.5)
         ),
       ),
       child: widget.child,
