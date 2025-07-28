@@ -41,6 +41,7 @@ dependencies:
   flutter_hooks: ^0.20.3
   dynamic_color: ^1.6.9
   shared_preferences: ^2.5.3
+  palette_generator: ^0.3.3+7
 
 dev_dependencies:
   flutter_test:

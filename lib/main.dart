@@ -4,6 +4,9 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'screens/splash_screen.dart';
 import 'screens/photo_swipe_screen.dart';
 import 'screens/grid_view_screen.dart';
+import 'widgets/adaptive_background.dart';
+import 'models/photo_model.dart';
+import 'package:flutter_hooks/flutter_hooks.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -121,43 +124,57 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends HookWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
-  // 화면 위젯을 생성하는 함수
-  Widget _getScreen(int index) {
-    switch (index) {
-      case 0:
-        return const PhotoSwipeScreen();
-      case 1:
-        return const GridViewScreen();
-      default:
-        return const PhotoSwipeScreen();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _getScreen(_selectedIndex),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.swipe), label: '스와이프'),
-          NavigationDestination(icon: Icon(Icons.grid_view), label: '그리드'),
-        ],
+    final selectedIndex = useState(0);
+    final currentPhoto = useState<PhotoModel?>(null);
+
+    // 현재 화면 위젯을 생성하는 함수
+    Widget getScreen(int index) {
+      switch (index) {
+        case 0:
+          // PhotoSwipeScreen에서 현재 사진 정보를 받아오기 위한 콜백 함수
+          return PhotoSwipeScreen(
+            onPhotoChanged: (photo) {
+              currentPhoto.value = photo;
+            },
+          );
+        case 1:
+          return const GridViewScreen();
+        default:
+          return PhotoSwipeScreen(
+            onPhotoChanged: (photo) {
+              currentPhoto.value = photo;
+            },
+          );
+      }
+    }
+
+    return AdaptiveBackground(
+      photo: currentPhoto.value,
+      enabled:
+          currentPhoto.value != null &&
+          selectedIndex.value == 0, // 스와이프 화면에서만 배경 활성화
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // 배경을 투명하게 설정
+        extendBodyBehindAppBar: true, // AppBar 뒤로 body 확장
+        body: getScreen(selectedIndex.value),
+        bottomNavigationBar: NavigationBar(
+          backgroundColor: Theme.of(
+            context,
+          ).colorScheme.surface.withOpacity(0.9), // 반투명 배경
+          selectedIndex: selectedIndex.value,
+          onDestinationSelected: (index) {
+            selectedIndex.value = index;
+          },
+          destinations: const [
+            NavigationDestination(icon: Icon(Icons.swipe), label: '스와이프'),
+            NavigationDestination(icon: Icon(Icons.grid_view), label: '그리드'),
+          ],
+        ),
       ),
     );
   }

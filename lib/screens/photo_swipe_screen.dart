@@ -6,6 +6,7 @@ import '../models/photo_model.dart';
 import '../services/photo_service.dart';
 import '../widgets/photo_card.dart';
 import '../widgets/custom_dialog.dart';
+import '../widgets/adaptive_background.dart';
 import 'dart:typed_data';
 import 'trash_screen.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -13,8 +14,10 @@ import 'grid_view_screen.dart';
 
 class PhotoSwipeScreen extends HookWidget {
   final int initialIndex;
+  final Function(PhotoModel?)? onPhotoChanged;
 
-  const PhotoSwipeScreen({Key? key, this.initialIndex = 0}) : super(key: key);
+  const PhotoSwipeScreen({Key? key, this.initialIndex = 0, this.onPhotoChanged})
+    : super(key: key);
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -36,6 +39,9 @@ class PhotoSwipeScreen extends HookWidget {
     );
     // 드래그 중인지 여부를 추적하는 상태
     final isDragging = useState(false);
+
+    // 현재 표시 중인 사진
+    final currentPhoto = useState<PhotoModel?>(null);
 
     // 추가 사진 로드
     Future<void> loadMorePhotos() async {
@@ -68,6 +74,15 @@ class PhotoSwipeScreen extends HookWidget {
       // 현재 인덱스 업데이트
       currentCardIndex.value = currentIndex;
 
+      // 현재 표시 중인 사진 업데이트
+      if (currentIndex < displayPhotos.value.length) {
+        currentPhoto.value = displayPhotos.value[currentIndex];
+        // 콜백 호출
+        if (onPhotoChanged != null) {
+          onPhotoChanged!(displayPhotos.value[currentIndex]);
+        }
+      }
+
       // 마지막 카드에 가까워지면 추가 로드
       if (!isUsingDummyData.value &&
           currentIndex >= displayPhotos.value.length - 3) {
@@ -91,6 +106,18 @@ class PhotoSwipeScreen extends HookWidget {
               .where((photo) => !photo.isInTrash)
               .toList();
           displayPhotos.value = filteredPhotos;
+
+          // 현재 표시할 사진 설정
+          if (filteredPhotos.isNotEmpty) {
+            final index = initialIndex < filteredPhotos.length
+                ? initialIndex
+                : 0;
+            currentPhoto.value = filteredPhotos[index];
+            // 콜백 호출
+            if (onPhotoChanged != null) {
+              onPhotoChanged!(filteredPhotos[index]);
+            }
+          }
         }
       } catch (e) {
         print('사진 로드 중 오류: $e');
@@ -114,6 +141,28 @@ class PhotoSwipeScreen extends HookWidget {
       final updatedPhotos = List<PhotoModel>.from(displayPhotos.value);
       updatedPhotos.removeAt(index);
       displayPhotos.value = updatedPhotos;
+
+      // 현재 표시 중인 사진 업데이트
+      if (updatedPhotos.isNotEmpty &&
+          currentCardIndex.value < updatedPhotos.length) {
+        currentPhoto.value = updatedPhotos[currentCardIndex.value];
+        // 콜백 호출
+        if (onPhotoChanged != null) {
+          onPhotoChanged!(updatedPhotos[currentCardIndex.value]);
+        }
+      } else if (updatedPhotos.isNotEmpty) {
+        currentPhoto.value = updatedPhotos[0];
+        // 콜백 호출
+        if (onPhotoChanged != null) {
+          onPhotoChanged!(updatedPhotos[0]);
+        }
+      } else {
+        currentPhoto.value = null;
+        // 콜백 호출
+        if (onPhotoChanged != null) {
+          onPhotoChanged!(null);
+        }
+      }
 
       deletedCount.value++;
     }
@@ -148,152 +197,177 @@ class PhotoSwipeScreen extends HookWidget {
       return null;
     }, []);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('사진 정리하기'),
-        centerTitle: true,
-        actions: [
-          // 그리드 보기 버튼
-          IconButton(
-            icon: const Icon(Icons.grid_view),
-            onPressed: navigateToGrid,
-            tooltip: '그리드 보기',
-          ),
-          // 휴지통 버튼
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: navigateToTrash,
-            tooltip: '휴지통',
-          ),
-          // 새로고침 버튼
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: loadPhotos,
-            tooltip: '새로고침',
-          ),
-        ],
-      ),
-      body: isLoading.value
-          ? Center(
-              child: CircularProgressIndicator(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            )
-          : !hasPermission.value
-          ? _buildPermissionDenied(context)
-          : displayPhotos.value.isEmpty
-          ? _buildNoPhotos(context)
-          : Column(
-              children: [
-                // 메인 카드 스와이퍼
-                Expanded(
-                  child: CardSwiper(
-                    controller: controller,
-                    cardsCount: displayPhotos.value.length,
-                    cardBuilder:
-                        (context, index, percentThresholdX, percentThresholdY) {
-                          // 인덱스 범위 확인
-                          if (index >= displayPhotos.value.length) {
-                            return Container(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              child: const Center(
-                                child: Text('사진을 불러올 수 없습니다'),
-                              ),
-                            );
-                          }
-
-                          // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
-                          final card = RepaintBoundary(
-                            key: ValueKey(
-                              'photo_card_${displayPhotos.value[index].asset.id}',
-                            ),
-                            child: PhotoCard(photo: displayPhotos.value[index]),
-                          );
-
-                          // 스와이프 방향에 따른 오버레이 추가
-                          if (percentThresholdX.abs() < 0.05) {
-                            // 스와이프가 거의 없는 경우 기본 카드만 표시
-                            return card;
-                          }
-
-                          // 스와이프 방향 및 진행률
-                          final isLeftSwipe = percentThresholdX < 0;
-                          final progress = percentThresholdX.abs().clamp(
-                            0.0,
-                            1.0,
-                          );
-
-                          // 아이콘 크기 계산 (정수로 변환)
-                          final iconSize = (24 + (56 * progress)).toInt();
-
-                          return Stack(
-                            children: [
-                              // 기본 카드
-                              card,
-
-                              // 스와이프 방향에 따른 오버레이
-                              Positioned.fill(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: isLeftSwipe
-                                        ? Theme.of(context).colorScheme.error
-                                              .withOpacity(0.5 * progress)
-                                        : Theme.of(context).colorScheme.primary
-                                              .withOpacity(0.3 * progress),
+    return AdaptiveBackground(
+      photo: currentPhoto.value,
+      enabled: currentPhoto.value != null,
+      child: Scaffold(
+        backgroundColor: Colors.transparent, // 배경을 투명하게 설정
+        extendBodyBehindAppBar: true, // AppBar 뒤로 body 확장
+        appBar: AppBar(
+          backgroundColor: Colors.transparent, // AppBar 배경 투명하게
+          elevation: 0,
+          title: const Text('사진 정리하기'),
+          centerTitle: true,
+          actions: [
+            // 그리드 보기 버튼
+            IconButton(
+              icon: const Icon(Icons.grid_view),
+              onPressed: navigateToGrid,
+              tooltip: '그리드 보기',
+            ),
+            // 휴지통 버튼
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: navigateToTrash,
+              tooltip: '휴지통',
+            ),
+            // 새로고침 버튼
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: loadPhotos,
+              tooltip: '새로고침',
+            ),
+          ],
+        ),
+        body: isLoading.value
+            ? Center(
+                child: CircularProgressIndicator(
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              )
+            : !hasPermission.value
+            ? _buildPermissionDenied(context)
+            : displayPhotos.value.isEmpty
+            ? _buildNoPhotos(context)
+            : SafeArea(
+                child: Column(
+                  children: [
+                    // 메인 카드 스와이퍼
+                    Expanded(
+                      child: CardSwiper(
+                        controller: controller,
+                        cardsCount: displayPhotos.value.length,
+                        cardBuilder:
+                            (
+                              context,
+                              index,
+                              percentThresholdX,
+                              percentThresholdY,
+                            ) {
+                              // 인덱스 범위 확인
+                              if (index >= displayPhotos.value.length) {
+                                return Container(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.errorContainer,
+                                  child: const Center(
+                                    child: Text('사진을 불러올 수 없습니다'),
                                   ),
-                                  child: Center(
-                                    child: Icon(
-                                      isLeftSwipe
-                                          ? Icons.delete_forever
-                                          : Icons.arrow_forward,
-                                      color: Colors.white,
-                                      size: iconSize.toDouble(),
+                                );
+                              }
+
+                              // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
+                              final card = RepaintBoundary(
+                                key: ValueKey(
+                                  'photo_card_${displayPhotos.value[index].asset.id}',
+                                ),
+                                child: PhotoCard(
+                                  photo: displayPhotos.value[index],
+                                ),
+                              );
+
+                              // 스와이프 방향에 따른 오버레이 추가
+                              if (percentThresholdX.abs() < 0.05) {
+                                // 스와이프가 거의 없는 경우 기본 카드만 표시
+                                return card;
+                              }
+
+                              // 스와이프 방향 및 진행률
+                              final isLeftSwipe = percentThresholdX < 0;
+                              final progress = percentThresholdX.abs().clamp(
+                                0.0,
+                                1.0,
+                              );
+
+                              // 아이콘 크기 계산 (정수로 변환)
+                              final iconSize = (24 + (56 * progress)).toInt();
+
+                              return Stack(
+                                children: [
+                                  // 기본 카드
+                                  card,
+
+                                  // 스와이프 방향에 따른 오버레이
+                                  Positioned.fill(
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: isLeftSwipe
+                                            ? Theme.of(context)
+                                                  .colorScheme
+                                                  .error
+                                                  .withOpacity(0.5 * progress)
+                                            : Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                                  .withOpacity(0.3 * progress),
+                                      ),
+                                      child: Center(
+                                        child: Icon(
+                                          isLeftSwipe
+                                              ? Icons.delete_forever
+                                              : Icons.arrow_forward,
+                                          color: Colors.white,
+                                          size: iconSize.toDouble(),
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ],
-                          );
+                                ],
+                              );
+                            },
+                        onSwipe: (previousIndex, currentIndex, direction) {
+                          // 사진이 없으면 스와이프 무시
+                          if (displayPhotos.value.isEmpty) return false;
+
+                          // 현재 인덱스 업데이트 및 썸네일 미리 로드
+                          onCardChanged(previousIndex, currentIndex);
+
+                          if (direction == CardSwiperDirection.left) {
+                            // 왼쪽으로 스와이프: 사진 삭제 (휴지통으로 이동)
+                            deletePhoto(previousIndex);
+                          }
+                          // 오른쪽으로 스와이프: 다음 사진으로 넘어감
+                          return true;
                         },
-                    onSwipe: (previousIndex, currentIndex, direction) {
-                      // 사진이 없으면 스와이프 무시
-                      if (displayPhotos.value.isEmpty) return false;
+                        numberOfCardsDisplayed: 1,
+                        backCardOffset: const Offset(0, 0),
+                        padding: const EdgeInsets.all(24.0),
+                        allowedSwipeDirection:
+                            const AllowedSwipeDirection.symmetric(
+                              horizontal: true,
+                            ),
+                        threshold: 50, // 스와이프 감도 조정 (높을수록 덜 민감)
+                        maxAngle: 30.0, // 최대 회전 각도 제한
+                        isLoop: true, // 무한 루프 활성화
+                        duration: const Duration(
+                          milliseconds: 400,
+                        ), // 애니메이션 지속 시간
+                        initialIndex: initialIndex < displayPhotos.value.length
+                            ? initialIndex
+                            : 0,
+                      ),
+                    ),
 
-                      // 현재 인덱스 업데이트 및 썸네일 미리 로드
-                      onCardChanged(previousIndex, currentIndex);
-
-                      if (direction == CardSwiperDirection.left) {
-                        // 왼쪽으로 스와이프: 사진 삭제 (휴지통으로 이동)
-                        deletePhoto(previousIndex);
-                      }
-                      // 오른쪽으로 스와이프: 다음 사진으로 넘어감
-                      return true;
-                    },
-                    numberOfCardsDisplayed: 1,
-                    backCardOffset: const Offset(0, 0),
-                    padding: const EdgeInsets.all(24.0),
-                    allowedSwipeDirection:
-                        const AllowedSwipeDirection.symmetric(horizontal: true),
-                    threshold: 50, // 스와이프 감도 조정 (높을수록 덜 민감)
-                    maxAngle: 30.0, // 최대 회전 각도 제한
-                    isLoop: true, // 무한 루프 활성화
-                    duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
-                    initialIndex: initialIndex < displayPhotos.value.length
-                        ? initialIndex
-                        : 0,
-                  ),
+                    // 하단 컨트롤 버튼
+                    _buildBottomControls(
+                      context,
+                      controller,
+                      displayPhotos.value.isEmpty,
+                    ),
+                  ],
                 ),
-
-                // 하단 컨트롤 버튼
-                _buildBottomControls(
-                  context,
-                  controller,
-                  displayPhotos.value.isEmpty,
-                ),
-              ],
-            ),
+              ),
+      ),
     );
   }
 
