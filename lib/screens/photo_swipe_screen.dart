@@ -32,24 +32,73 @@ class PhotoSwipeScreen extends HookWidget {
     final hasPermission = useState(false);
     final deletedCount = useState(0);
     final isUsingDummyData = useState(false);
+    final controller = useMemoized(() => CardSwiperController(), []);
     final currentCardIndex = useState(initialIndex);
-    final CardSwiperController controller = useMemoized(
-      () => CardSwiperController(),
-      [],
-    );
     // 드래그 중인지 여부를 추적하는 상태
     final isDragging = useState(false);
-
-    // 현재 표시 중인 사진
     final currentPhoto = useState<PhotoModel?>(null);
+
+    // 사진 로드 함수
+    Future<void> loadPhotos() async {
+      if (!context.mounted) return; // 컨텍스트가 유효한지 확인
+
+      isLoading.value = true;
+      try {
+        final permissionGranted = await photoService.requestPermission();
+        if (!context.mounted) return; // 비동기 작업 후 컨텍스트 확인
+
+        hasPermission.value = permissionGranted;
+
+        if (permissionGranted) {
+          final loadedPhotos = await photoService.loadPhotos();
+          if (!context.mounted) return; // 비동기 작업 후 컨텍스트 확인
+
+          photos.value = loadedPhotos;
+
+          // 휴지통에 없는 사진만 표시 목록에 추가
+          final filteredPhotos = loadedPhotos
+              .where((photo) => !photo.isInTrash)
+              .toList();
+
+          displayPhotos.value = filteredPhotos;
+
+          // 현재 표시할 사진 설정
+          if (filteredPhotos.isNotEmpty) {
+            final index = initialIndex < filteredPhotos.length
+                ? initialIndex
+                : 0;
+            currentPhoto.value = filteredPhotos[index];
+            // 콜백 호출
+            if (onPhotoChanged != null) {
+              onPhotoChanged!(filteredPhotos[index]);
+            }
+          } else {
+            // 사진이 없는 경우
+            currentPhoto.value = null;
+            if (onPhotoChanged != null) {
+              onPhotoChanged!(null);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('사진 로드 중 오류: $e');
+      } finally {
+        if (context.mounted) {
+          // 컨텍스트가 유효한지 확인
+          isLoading.value = false;
+        }
+      }
+    }
 
     // 추가 사진 로드
     Future<void> loadMorePhotos() async {
-      if (isLoadingMore.value || isUsingDummyData.value) return;
+      if (!context.mounted || isLoadingMore.value) return; // 컨텍스트 확인 및 중복 로드 방지
 
       isLoadingMore.value = true;
       try {
         final morePhotos = await photoService.loadMorePhotos();
+        if (!context.mounted) return; // 비동기 작업 후 컨텍스트 확인
+
         if (morePhotos.isNotEmpty) {
           // 전체 사진 목록 업데이트
           photos.value = [...photos.value, ...morePhotos];
@@ -63,9 +112,23 @@ class PhotoSwipeScreen extends HookWidget {
           }
         }
       } finally {
-        isLoadingMore.value = false;
+        if (context.mounted) {
+          // 컨텍스트가 유효한지 확인
+          isLoadingMore.value = false;
+        }
       }
     }
+
+    // 초기 데이터 로드
+    useEffect(() {
+      loadPhotos();
+
+      // cleanup 함수: 컴포넌트가 unmount될 때 호출됨
+      return () {
+        // 명시적으로 아무것도 하지 않음 (ValueNotifier는 자동으로 dispose됨)
+        // 이렇게 하면 FlutterError가 발생하지 않음
+      };
+    }, []);
 
     // 현재 카드 변경 시 호출되는 함수
     void onCardChanged(int previousIndex, int? currentIndex) {
@@ -87,42 +150,6 @@ class PhotoSwipeScreen extends HookWidget {
       if (!isUsingDummyData.value &&
           currentIndex >= displayPhotos.value.length - 3) {
         loadMorePhotos();
-      }
-    }
-
-    // 사진 로드 함수
-    Future<void> loadPhotos() async {
-      isLoading.value = true;
-      try {
-        final permissionGranted = await photoService.requestPermission();
-        hasPermission.value = permissionGranted;
-
-        if (permissionGranted) {
-          final loadedPhotos = await photoService.loadPhotos();
-          photos.value = loadedPhotos;
-
-          // 휴지통에 없는 사진만 표시 목록에 추가
-          final filteredPhotos = loadedPhotos
-              .where((photo) => !photo.isInTrash)
-              .toList();
-          displayPhotos.value = filteredPhotos;
-
-          // 현재 표시할 사진 설정
-          if (filteredPhotos.isNotEmpty) {
-            final index = initialIndex < filteredPhotos.length
-                ? initialIndex
-                : 0;
-            currentPhoto.value = filteredPhotos[index];
-            // 콜백 호출
-            if (onPhotoChanged != null) {
-              onPhotoChanged!(filteredPhotos[index]);
-            }
-          }
-        }
-      } catch (e) {
-        print('사진 로드 중 오류: $e');
-      } finally {
-        isLoading.value = false;
       }
     }
 
@@ -190,12 +217,6 @@ class PhotoSwipeScreen extends HookWidget {
         loadPhotos();
       });
     }
-
-    // 초기 데이터 로드
-    useEffect(() {
-      loadPhotos();
-      return null;
-    }, []);
 
     return AdaptiveBackground(
       photo: currentPhoto.value,
