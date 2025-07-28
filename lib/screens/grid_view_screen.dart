@@ -10,7 +10,9 @@ import 'trash_screen.dart';
 import 'package:photo_manager/photo_manager.dart';
 
 class GridViewScreen extends HookWidget {
-  const GridViewScreen({Key? key}) : super(key: key);
+  final PhotoService? photoService;
+
+  const GridViewScreen({Key? key, this.photoService}) : super(key: key);
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -19,7 +21,11 @@ class GridViewScreen extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final photoService = useMemoized(() => PhotoService(), []);
+    // photoService가 전달되지 않은 경우 새로 생성
+    final photoServiceInstance = useMemoized(
+      () => photoService ?? PhotoService(),
+      [photoService],
+    );
     final photos = useState<List<PhotoModel>>([]);
     final displayPhotos = useState<List<PhotoModel>>([]);
     final isLoading = useState(true);
@@ -28,6 +34,8 @@ class GridViewScreen extends HookWidget {
     final deletedCount = useState(0);
     final scrollController = useScrollController();
     final selectedPhotos = useState<Set<String>>({});
+    // 초기 로딩 시도 여부를 추적
+    final hasAttemptedInitialLoad = useState(false);
 
     // 썸네일 로드 함수
     Future<Uint8List?> loadThumbnail(PhotoModel photo, {int size = 200}) async {
@@ -81,7 +89,7 @@ class GridViewScreen extends HookWidget {
 
       isLoadingMore.value = true;
       try {
-        final morePhotos = await photoService.loadMorePhotos();
+        final morePhotos = await photoServiceInstance.loadMorePhotos();
         if (morePhotos.isNotEmpty) {
           // 전체 사진 목록 업데이트
           photos.value = [...photos.value, ...morePhotos];
@@ -114,20 +122,30 @@ class GridViewScreen extends HookWidget {
         }
       }
 
-      scrollController.addListener(onScroll);
-      return () => scrollController.removeListener(onScroll);
+      // 스크롤 컨트롤러가 연결된 경우에만 리스너 추가
+      if (scrollController.hasClients) {
+        scrollController.addListener(onScroll);
+        return () => scrollController.removeListener(onScroll);
+      }
+      return null;
     }, [scrollController]);
 
     // 사진 로드 함수
     Future<void> loadPhotos() async {
+      // 이미 로딩 중이면 중복 호출 방지
+      if (isLoading.value) return;
+
       isLoading.value = true;
+      hasAttemptedInitialLoad.value = true;
+
       try {
-        final permissionGranted = await photoService.requestPermission();
+        final permissionGranted = await photoServiceInstance
+            .requestPermission();
         hasPermission.value = permissionGranted;
 
         if (permissionGranted) {
           // 전체 사진 목록 로드
-          final loadedPhotos = await photoService.loadPhotos();
+          final loadedPhotos = await photoServiceInstance.loadPhotos();
           photos.value = loadedPhotos;
 
           // 휴지통에 없는 사진만 표시 목록에 추가
@@ -180,7 +198,7 @@ class GridViewScreen extends HookWidget {
 
       // 휴지통으로 이동
       for (final photo in photosToDelete) {
-        await photoService.moveToTrash(photo);
+        await photoServiceInstance.moveToTrash(photo);
       }
 
       // 삭제된 사진을 목록에서 제거
@@ -199,7 +217,9 @@ class GridViewScreen extends HookWidget {
     void navigateToSwipeScreen(int index) {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => PhotoSwipeScreen()),
+        MaterialPageRoute(
+          builder: (context) => PhotoSwipeScreen(initialIndex: index),
+        ),
       ).then((_) {
         // 스와이프 화면에서 돌아오면 목록 새로고침
         loadPhotos();
@@ -211,7 +231,7 @@ class GridViewScreen extends HookWidget {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => TrashScreen(photoService: photoService),
+          builder: (context) => TrashScreen(photoService: photoServiceInstance),
         ),
       ).then((_) {
         // 휴지통에서 돌아오면 목록 새로고침
@@ -221,9 +241,99 @@ class GridViewScreen extends HookWidget {
 
     // 초기 데이터 로드
     useEffect(() {
-      loadPhotos();
+      // 화면이 처음 표시될 때만 로드
+      if (!hasAttemptedInitialLoad.value) {
+        loadPhotos();
+      }
       return null;
     }, []);
+
+    // 그리드 아이템 빌더
+    Widget buildGridItem(int index, PhotoModel photo) {
+      final isSelected = selectedPhotos.value.contains(photo.asset.id);
+      final cacheKey = '${photo.asset.id}_200';
+      final isCached = _thumbnailCache.containsKey(cacheKey);
+
+      return GestureDetector(
+        onTap: () {
+          if (selectedPhotos.value.isNotEmpty) {
+            // 선택 모드일 때는 선택/해제
+            togglePhotoSelection(photo.asset.id);
+          } else {
+            // 일반 모드일 때는 스와이프 화면으로 이동
+            navigateToSwipeScreen(index);
+          }
+        },
+        onLongPress: () {
+          // 길게 누르면 선택 모드 시작
+          togglePhotoSelection(photo.asset.id);
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // 썸네일 이미지
+            isCached
+                ? Image.memory(
+                    _thumbnailCache[cacheKey]!,
+                    fit: BoxFit.cover,
+                    cacheWidth: 200,
+                    cacheHeight: 200,
+                    filterQuality: FilterQuality.medium,
+                    gaplessPlayback: true,
+                  )
+                : FutureBuilder<Uint8List?>(
+                    key: ValueKey('thumbnail_${photo.asset.id}'),
+                    future: loadThumbnail(photo),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return Container(
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          child: const Center(
+                            child: SizedBox(
+                              width: 30,
+                              height: 30,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError || snapshot.data == null) {
+                        return Container(
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: const Center(
+                            child: Icon(Icons.error_outline, size: 30),
+                          ),
+                        );
+                      }
+
+                      return Image.memory(
+                        snapshot.data!,
+                        fit: BoxFit.cover,
+                        cacheWidth: 200,
+                        cacheHeight: 200,
+                        filterQuality: FilterQuality.medium,
+                        gaplessPlayback: true,
+                      );
+                    },
+                  ),
+
+            // 선택 표시 오버레이
+            if (isSelected)
+              Container(
+                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                child: const Center(
+                  child: Icon(
+                    Icons.check_circle,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -253,8 +363,15 @@ class GridViewScreen extends HookWidget {
       ),
       body: isLoading.value
           ? Center(
-              child: CircularProgressIndicator(
-                color: Theme.of(context).colorScheme.primary,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('사진을 불러오는 중...'),
+                ],
               ),
             )
           : !hasPermission.value
@@ -274,94 +391,7 @@ class GridViewScreen extends HookWidget {
               cacheExtent: 500, // 스크롤 캐시 확장
               itemBuilder: (context, index) {
                 final photo = displayPhotos.value[index];
-                final isSelected = selectedPhotos.value.contains(
-                  photo.asset.id,
-                );
-                final cacheKey = '${photo.asset.id}_200';
-                final isCached = _thumbnailCache.containsKey(cacheKey);
-
-                return GestureDetector(
-                  onTap: () {
-                    if (selectedPhotos.value.isNotEmpty) {
-                      // 선택 모드일 때는 선택/해제
-                      togglePhotoSelection(photo.asset.id);
-                    } else {
-                      // 일반 모드일 때는 스와이프 화면으로 이동
-                      navigateToSwipeScreen(index);
-                    }
-                  },
-                  onLongPress: () {
-                    // 길게 누르면 선택 모드 시작
-                    togglePhotoSelection(photo.asset.id);
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      // 썸네일 이미지
-                      isCached
-                          ? Image.memory(
-                              _thumbnailCache[cacheKey]!,
-                              fit: BoxFit.cover,
-                              cacheWidth: 200,
-                              cacheHeight: 200,
-                              filterQuality: FilterQuality.medium,
-                              gaplessPlayback: true,
-                            )
-                          : FutureBuilder<Uint8List?>(
-                              key: ValueKey('thumbnail_${photo.asset.id}'),
-                              future: loadThumbnail(photo),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData) {
-                                  return Container(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceVariant,
-                                  );
-                                }
-
-                                if (snapshot.hasError ||
-                                    snapshot.data == null) {
-                                  return Container(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.errorContainer,
-                                    child: const Center(
-                                      child: Icon(
-                                        Icons.error_outline,
-                                        size: 30,
-                                      ),
-                                    ),
-                                  );
-                                }
-
-                                return Image.memory(
-                                  snapshot.data!,
-                                  fit: BoxFit.cover,
-                                  cacheWidth: 200,
-                                  cacheHeight: 200,
-                                  filterQuality: FilterQuality.medium,
-                                  gaplessPlayback: true,
-                                );
-                              },
-                            ),
-
-                      // 선택 표시 오버레이
-                      if (isSelected)
-                        Container(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.primary.withOpacity(0.5),
-                          child: const Center(
-                            child: Icon(
-                              Icons.check_circle,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                );
+                return buildGridItem(index, photo);
               },
             ),
       floatingActionButton: FloatingActionButton(

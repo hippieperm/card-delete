@@ -7,6 +7,7 @@ import 'screens/grid_view_screen.dart';
 import 'widgets/adaptive_background.dart';
 import 'models/photo_model.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'services/photo_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -132,6 +133,9 @@ class HomeScreen extends HookWidget {
     final selectedIndex = useState(0);
     final currentPhoto = useState<PhotoModel?>(null);
 
+    // 사진 서비스 인스턴스 생성 (공유)
+    final photoService = useMemoized(() => PhotoService(), []);
+
     // 현재 화면 위젯을 생성하는 함수
     Widget getScreen(int index) {
       switch (index) {
@@ -143,7 +147,8 @@ class HomeScreen extends HookWidget {
             },
           );
         case 1:
-          return const GridViewScreen();
+          // 그리드 화면에 동일한 photoService 인스턴스 전달
+          return GridViewScreen(photoService: photoService);
         default:
           return PhotoSwipeScreen(
             onPhotoChanged: (photo) {
