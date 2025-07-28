@@ -94,6 +94,47 @@ class TrashScreen extends HookWidget {
       }
     }
 
+    // 모든 사진 복원
+    Future<void> restoreAllPhotos() async {
+      // 확인 다이얼로그 표시
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('모든 사진 복원'),
+          content: const Text('휴지통의 모든 사진을 복원하시겠습니까?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('복원', style: TextStyle(color: Colors.green)),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm == true) {
+        // 모든 사진 복원
+        for (final photo in List<PhotoModel>.from(trashPhotos.value)) {
+          await photoService.restoreFromTrash(photo);
+        }
+
+        refreshTrash();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('모든 사진을 복원했습니다'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('휴지통'),
@@ -109,66 +150,176 @@ class TrashScreen extends HookWidget {
       ),
       body: trashPhotos.value.isEmpty
           ? _buildEmptyTrash()
-          : ListView.builder(
-              padding: const EdgeInsets.all(8),
-              itemCount: trashPhotos.value.length,
-              itemBuilder: (context, index) {
-                final photo = trashPhotos.value[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(vertical: 8),
-                  child: Column(
-                    children: [
-                      // 사진 표시
-                      SizedBox(
-                        height: 200,
-                        width: double.infinity,
-                        child: PhotoCard(photo: photo),
-                      ),
-
-                      // 삭제 날짜 표시
-                      if (photo.trashDate != null)
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Text(
-                            '삭제일: ${_formatDate(photo.trashDate!)}',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ),
-
-                      // 버튼 행
-                      ButtonBar(
+          : Stack(
+              children: [
+                // 사진 목록
+                ListView.builder(
+                  padding: const EdgeInsets.only(
+                    left: 8,
+                    right: 8,
+                    top: 8,
+                    bottom: 100, // 하단 버튼을 위한 패딩
+                  ),
+                  itemCount: trashPhotos.value.length,
+                  itemBuilder: (context, index) {
+                    final photo = trashPhotos.value[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      child: Column(
                         children: [
-                          TextButton.icon(
-                            icon: const Icon(Icons.restore),
-                            label: const Text('복원'),
-                            onPressed: () => restorePhoto(photo),
+                          // 사진 표시
+                          SizedBox(
+                            height: 200,
+                            width: double.infinity,
+                            child: PhotoCard(photo: photo),
                           ),
-                          TextButton.icon(
-                            icon: const Icon(Icons.delete_forever),
-                            label: const Text('영구 삭제'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
+
+                          // 삭제 날짜 표시
+                          if (photo.trashDate != null)
+                            Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Text(
+                                '삭제일: ${_formatDate(photo.trashDate!)}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.outline,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                            onPressed: () => permanentlyDeletePhoto(photo),
+
+                          // 버튼 행
+                          ButtonBar(
+                            children: [
+                              FilledButton.tonal(
+                                onPressed: () => restorePhoto(photo),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.restore, size: 18),
+                                    SizedBox(width: 4),
+                                    Text('복원'),
+                                  ],
+                                ),
+                              ),
+                              FilledButton.tonal(
+                                onPressed: () => permanentlyDeletePhoto(photo),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.errorContainer,
+                                  foregroundColor: Theme.of(
+                                    context,
+                                  ).colorScheme.onErrorContainer,
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.delete_forever, size: 18),
+                                    SizedBox(width: 4),
+                                    Text('영구 삭제'),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ],
+                    );
+                  },
+                ),
+
+                // 하단 고정 버튼 (모두 복원, 모두 삭제)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Row(
+                        children: [
+                          // 모두 복원 버튼
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: trashPhotos.value.isEmpty
+                                  ? null
+                                  : restoreAllPhotos,
+                              icon: const Icon(Icons.restore_rounded),
+                              label: const Text('모두 복원'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.secondaryContainer,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onSecondaryContainer,
+                                minimumSize: const Size.fromHeight(56),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          // 모두 삭제 버튼
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: trashPhotos.value.isEmpty
+                                  ? null
+                                  : emptyTrash,
+                              icon: const Icon(Icons.delete_forever_rounded),
+                              label: const Text('모두 삭제'),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.errorContainer,
+                                foregroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.onErrorContainer,
+                                minimumSize: const Size.fromHeight(56),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
     );
   }
 
   Widget _buildEmptyTrash() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.delete_outline, size: 80, color: Colors.grey),
-          SizedBox(height: 16),
-          Text(
+          Icon(
+            Icons.delete_outline,
+            size: 80,
+            color: Colors.grey.withOpacity(0.7),
+          ),
+          const SizedBox(height: 16),
+          const Text(
             '휴지통이 비어 있습니다',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
