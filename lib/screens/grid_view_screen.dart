@@ -138,31 +138,9 @@ class GridViewScreen extends HookWidget {
 
           // 초기 로드된 사진들의 썸네일을 미리 로드
           _preloadThumbnails(filteredPhotos);
-
-          if (displayPhotos.value.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('표시할 사진이 없습니다.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('사진 접근 권한이 필요합니다.'),
-              backgroundColor: Colors.red,
-            ),
-          );
         }
       } catch (e) {
         debugPrint('사진 로드 중 오류: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('사진을 불러오는 중 오류가 발생했습니다: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
       } finally {
         isLoading.value = false;
       }
@@ -215,30 +193,6 @@ class GridViewScreen extends HookWidget {
 
       // 선택 초기화
       selectedPhotos.value = {};
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('${photosToDelete.length}장의 사진이 휴지통으로 이동되었습니다'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-          action: SnackBarAction(
-            label: '실행취소',
-            textColor: Colors.white,
-            onPressed: () {
-              // 휴지통에서 복원
-              for (final photo in photosToDelete) {
-                photoService.restoreFromTrash(photo);
-              }
-
-              // 목록에 다시 추가
-              final restoredPhotos = List<PhotoModel>.from(displayPhotos.value);
-              restoredPhotos.addAll(photosToDelete);
-              displayPhotos.value = restoredPhotos;
-              deletedCount.value -= photosToDelete.length;
-            },
-          ),
-        ),
-      );
     }
 
     // 스와이프 화면으로 이동

@@ -91,31 +91,9 @@ class PhotoSwipeScreen extends HookWidget {
               .where((photo) => !photo.isInTrash)
               .toList();
           displayPhotos.value = filteredPhotos;
-
-          if (displayPhotos.value.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('표시할 사진이 없습니다.'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('사진 접근 권한이 필요합니다.'),
-              backgroundColor: Colors.red,
-            ),
-          );
         }
       } catch (e) {
         print('사진 로드 중 오류: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('사진을 불러오는 중 오류가 발생했습니다: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
       } finally {
         isLoading.value = false;
       }
@@ -128,18 +106,7 @@ class PhotoSwipeScreen extends HookWidget {
 
       final photo = displayPhotos.value[index];
 
-      // 삭제 확인 다이얼로그 표시
-      final confirm = await CustomDialog.show(
-        context: context,
-        title: '사진 삭제',
-        message: '이 사진을 휴지통으로 이동하시겠습니까?',
-        confirmText: '삭제',
-        icon: Icons.delete_outline,
-        isDestructive: true,
-      );
-
-      if (confirm != true) return;
-
+      // 삭제 확인 다이얼로그 표시 제거 - 메인 화면에서는 바로 삭제
       // 휴지통으로 이동
       await photoService.moveToTrash(photo);
 
@@ -149,31 +116,6 @@ class PhotoSwipeScreen extends HookWidget {
       displayPhotos.value = updatedPhotos;
 
       deletedCount.value++;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('사진이 휴지통으로 이동되었습니다 (${deletedCount.value}개)'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 1),
-          action: SnackBarAction(
-            label: '실행취소',
-            textColor: Colors.white,
-            onPressed: () {
-              // 휴지통에서 복원
-              photoService.restoreFromTrash(photo);
-
-              // 목록에 다시 추가
-              final restoredPhotos = List<PhotoModel>.from(displayPhotos.value);
-              if (index < restoredPhotos.length) {
-                restoredPhotos.insert(index, photo);
-              } else {
-                restoredPhotos.add(photo);
-              }
-              displayPhotos.value = restoredPhotos;
-              deletedCount.value--;
-            },
-          ),
-        ),
-      );
     }
 
     // 휴지통 화면으로 이동

@@ -25,14 +25,6 @@ class TrashScreen extends HookWidget {
     void restorePhoto(PhotoModel photo) {
       photoService.restoreFromTrash(photo);
       refreshTrash();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('사진이 복원되었습니다'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 1),
-        ),
-      );
     }
 
     // 사진 영구 삭제
@@ -50,27 +42,6 @@ class TrashScreen extends HookWidget {
       if (confirm == true) {
         final success = await photoService.deleteFromTrash(photo);
         refreshTrash();
-
-        if (success) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('사진이 영구적으로 삭제되었습니다'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 1),
-              ),
-            );
-          }
-        } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('사진 삭제에 실패했습니다'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        }
       }
     }
 
@@ -89,16 +60,6 @@ class TrashScreen extends HookWidget {
       if (confirm == true) {
         await photoService.emptyTrash();
         refreshTrash();
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('휴지통을 비웠습니다'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
       }
     }
 
@@ -120,16 +81,6 @@ class TrashScreen extends HookWidget {
         }
 
         refreshTrash();
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('모든 사진을 복원했습니다'),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
       }
     }
 
