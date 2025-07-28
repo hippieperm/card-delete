@@ -131,15 +131,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  static final List<Widget> _screens = [
-    const PhotoSwipeScreen(),
-    const GridViewScreen(),
-  ];
+  // 화면 위젯을 생성하는 함수
+  Widget _getScreen(int index) {
+    switch (index) {
+      case 0:
+        return const PhotoSwipeScreen();
+      case 1:
+        return const GridViewScreen();
+      default:
+        return const PhotoSwipeScreen();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: _getScreen(_selectedIndex),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {

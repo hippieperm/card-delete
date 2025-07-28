@@ -105,6 +105,8 @@ class PhotoSwipeScreen extends HookWidget {
 
     // 사진 삭제 함수 (휴지통으로 이동)
     Future<void> deletePhoto(int index) async {
+      if (photos.value.isEmpty || index >= photos.value.length) return;
+
       final photo = photos.value[index];
 
       // 휴지통으로 이동
@@ -217,6 +219,18 @@ class PhotoSwipeScreen extends HookWidget {
                     cardsCount: photos.value.length,
                     cardBuilder:
                         (context, index, percentThresholdX, percentThresholdY) {
+                          // 인덱스 범위 확인
+                          if (index >= photos.value.length) {
+                            return Container(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.errorContainer,
+                              child: const Center(
+                                child: Text('사진을 불러올 수 없습니다'),
+                              ),
+                            );
+                          }
+
                           // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
                           final card = RepaintBoundary(
                             key: ValueKey(
@@ -271,6 +285,9 @@ class PhotoSwipeScreen extends HookWidget {
                           );
                         },
                     onSwipe: (previousIndex, currentIndex, direction) {
+                      // 사진이 없으면 스와이프 무시
+                      if (photos.value.isEmpty) return false;
+
                       // 현재 인덱스 업데이트 및 썸네일 미리 로드
                       onCardChanged(previousIndex, currentIndex);
 
@@ -290,12 +307,14 @@ class PhotoSwipeScreen extends HookWidget {
                     maxAngle: 30.0, // 최대 회전 각도 제한
                     isLoop: true, // 무한 루프 활성화
                     duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
-                    initialIndex: initialIndex,
+                    initialIndex: initialIndex < photos.value.length
+                        ? initialIndex
+                        : 0,
                   ),
                 ),
 
                 // 하단 컨트롤 버튼
-                _buildBottomControls(context, controller),
+                _buildBottomControls(context, controller, photos.value.isEmpty),
               ],
             ),
     );
@@ -369,6 +388,7 @@ class PhotoSwipeScreen extends HookWidget {
   Widget _buildBottomControls(
     BuildContext context,
     CardSwiperController controller,
+    bool isPhotosEmpty,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -382,7 +402,7 @@ class PhotoSwipeScreen extends HookWidget {
             child: Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: FilledButton.tonalIcon(
-                onPressed: () => controller.swipeLeft(),
+                onPressed: isPhotosEmpty ? null : () => controller.swipeLeft(),
                 icon: const Icon(Icons.delete_outline),
                 label: const Text('삭제'),
                 style:
@@ -410,7 +430,7 @@ class PhotoSwipeScreen extends HookWidget {
             child: Padding(
               padding: const EdgeInsets.only(left: 8.0),
               child: FilledButton.icon(
-                onPressed: () => controller.swipeRight(),
+                onPressed: isPhotosEmpty ? null : () => controller.swipeRight(),
                 icon: const Icon(Icons.arrow_forward_rounded),
                 label: const Text('다음'),
                 style: FilledButton.styleFrom(
