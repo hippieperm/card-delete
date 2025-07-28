@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import '../models/photo_model.dart';
 import '../services/photo_service.dart';
 import '../widgets/photo_card.dart';
+import '../widgets/custom_dialog.dart';
 
 class TrashScreen extends HookWidget {
   final PhotoService photoService;
@@ -36,46 +37,53 @@ class TrashScreen extends HookWidget {
 
     // 사진 영구 삭제
     Future<void> permanentlyDeletePhoto(PhotoModel photo) async {
-      final success = await photoService.deleteFromTrash(photo);
-      refreshTrash();
+      // 삭제 확인 다이얼로그 표시
+      final confirm = await CustomDialog.show(
+        context: context,
+        title: '영구 삭제',
+        message: '이 사진을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+        confirmText: '삭제',
+        icon: Icons.delete_forever,
+        isDestructive: true,
+      );
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('사진이 영구적으로 삭제되었습니다'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 1),
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('사진 삭제에 실패했습니다'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+      if (confirm == true) {
+        final success = await photoService.deleteFromTrash(photo);
+        refreshTrash();
+
+        if (success) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('사진이 영구적으로 삭제되었습니다'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 1),
+              ),
+            );
+          }
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('사진 삭제에 실패했습니다'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+        }
       }
     }
 
     // 휴지통 비우기
     Future<void> emptyTrash() async {
       // 확인 다이얼로그 표시
-      final confirm = await showDialog<bool>(
+      final confirm = await CustomDialog.show(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('휴지통 비우기'),
-          content: const Text('휴지통의 모든 사진을 영구적으로 삭제하시겠습니까?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('삭제', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        ),
+        title: '휴지통 비우기',
+        message: '휴지통의 모든 사진을 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.',
+        confirmText: '모두 삭제',
+        icon: Icons.delete_forever_rounded,
+        isDestructive: true,
       );
 
       if (confirm == true) {
@@ -97,22 +105,12 @@ class TrashScreen extends HookWidget {
     // 모든 사진 복원
     Future<void> restoreAllPhotos() async {
       // 확인 다이얼로그 표시
-      final confirm = await showDialog<bool>(
+      final confirm = await CustomDialog.show(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('모든 사진 복원'),
-          content: const Text('휴지통의 모든 사진을 복원하시겠습니까?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('취소'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('복원', style: TextStyle(color: Colors.green)),
-            ),
-          ],
-        ),
+        title: '모든 사진 복원',
+        message: '휴지통의 모든 사진을 복원하시겠습니까?',
+        confirmText: '모두 복원',
+        icon: Icons.restore_rounded,
       );
 
       if (confirm == true) {

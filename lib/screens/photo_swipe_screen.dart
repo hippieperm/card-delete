@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/photo_model.dart';
 import '../services/photo_service.dart';
 import '../widgets/photo_card.dart';
+import '../widgets/custom_dialog.dart';
 import 'dart:typed_data';
 import 'trash_screen.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -126,6 +127,18 @@ class PhotoSwipeScreen extends HookWidget {
         return;
 
       final photo = displayPhotos.value[index];
+
+      // 삭제 확인 다이얼로그 표시
+      final confirm = await CustomDialog.show(
+        context: context,
+        title: '사진 삭제',
+        message: '이 사진을 휴지통으로 이동하시겠습니까?',
+        confirmText: '삭제',
+        icon: Icons.delete_outline,
+        isDestructive: true,
+      );
+
+      if (confirm != true) return;
 
       // 휴지통으로 이동
       await photoService.moveToTrash(photo);

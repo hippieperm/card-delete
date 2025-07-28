@@ -3,6 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/photo_model.dart';
 import '../services/photo_service.dart';
+import '../widgets/custom_dialog.dart';
 import 'dart:typed_data';
 import 'photo_swipe_screen.dart';
 import 'trash_screen.dart';
@@ -182,6 +183,18 @@ class GridViewScreen extends HookWidget {
     Future<void> deleteSelectedPhotos() async {
       if (selectedPhotos.value.isEmpty) return;
 
+      // 확인 다이얼로그 표시
+      final confirm = await CustomDialog.show(
+        context: context,
+        title: '선택한 사진 삭제',
+        message: '${selectedPhotos.value.length}장의 사진을 휴지통으로 이동하시겠습니까?',
+        confirmText: '삭제',
+        icon: Icons.delete_outline,
+        isDestructive: true,
+      );
+
+      if (confirm != true) return;
+
       final selectedIds = selectedPhotos.value;
       final photosToDelete = displayPhotos.value
           .where((photo) => selectedIds.contains(photo.asset.id))
@@ -189,15 +202,15 @@ class GridViewScreen extends HookWidget {
 
       // 휴지통으로 이동
       for (final photo in photosToDelete) {
-        photoService.moveToTrash(photo);
+        await photoService.moveToTrash(photo);
       }
 
-      // 삭제된 사진을 표시 목록에서 제거
-      final updatedDisplayPhotos = displayPhotos.value
+      // 삭제된 사진을 목록에서 제거
+      final updatedPhotos = displayPhotos.value
           .where((photo) => !selectedIds.contains(photo.asset.id))
           .toList();
 
-      displayPhotos.value = updatedDisplayPhotos;
+      displayPhotos.value = updatedPhotos;
       deletedCount.value += photosToDelete.length;
 
       // 선택 초기화
