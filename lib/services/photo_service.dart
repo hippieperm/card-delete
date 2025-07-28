@@ -171,9 +171,25 @@ class PhotoService {
 
   // 휴지통 비우기
   Future<void> emptyTrash() async {
-    for (final photo in _trashBin.toList()) {
-      await deletePhoto(photo.asset);
-      _trashBin.remove(photo);
+    if (_trashBin.isEmpty) return;
+
+    try {
+      // 모든 사진의 ID를 수집
+      final List<String> assetIds = _trashBin
+          .map((photo) => photo.asset.id)
+          .toList();
+
+      // 한 번에 모든 사진 삭제
+      final result = await PhotoManager.editor.deleteWithIds(assetIds);
+
+      // 삭제 성공한 사진만 휴지통에서 제거
+      if (result.isNotEmpty) {
+        _trashBin.removeWhere((photo) => result.contains(photo.asset.id));
+      }
+
+      print('휴지통 비우기 완료: ${result.length}개 삭제됨');
+    } catch (e) {
+      print('휴지통 비우기 중 오류 발생: $e');
     }
   }
 
