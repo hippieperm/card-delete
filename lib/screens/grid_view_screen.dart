@@ -133,34 +133,92 @@ class GridViewScreen extends HookWidget {
     // 사진 로드 함수
     Future<void> loadPhotos() async {
       // 이미 로딩 중이면 중복 호출 방지
-      if (isLoading.value) return;
+      if (isLoading.value) {
+        debugPrint('이미 로딩 중이므로 중복 호출 방지');
+        return;
+      }
 
+      debugPrint('사진 로드 시작 - GridViewScreen');
       isLoading.value = true;
       hasAttemptedInitialLoad.value = true;
 
+      // 타임아웃 설정 (10초 후 자동으로 로딩 상태 해제)
+      Future.delayed(const Duration(seconds: 10), () {
+        if (isLoading.value) {
+          debugPrint('로딩 타임아웃 발생, 강제로 로딩 상태 해제');
+          isLoading.value = false;
+          // 데이터가 없으면 빈 상태로 설정
+          if (photos.value.isEmpty) {
+            photos.value = [];
+            displayPhotos.value = [];
+          }
+        }
+      });
+
       try {
+        // 권한 확인 (최대 5초 대기)
         final permissionGranted = await photoServiceInstance
-            .requestPermission();
+            .requestPermission()
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () {
+                debugPrint('권한 확인 타임아웃');
+                return false;
+              },
+            );
+
+        debugPrint('권한 확인 결과: $permissionGranted');
         hasPermission.value = permissionGranted;
 
         if (permissionGranted) {
-          // 전체 사진 목록 로드
-          final loadedPhotos = await photoServiceInstance.loadPhotos();
+          // 전체 사진 목록 로드 (최대 8초 대기)
+          debugPrint('권한 있음, 사진 로드 시작');
+          final loadedPhotos = await photoServiceInstance.loadPhotos().timeout(
+            const Duration(seconds: 8),
+            onTimeout: () {
+              debugPrint('사진 로드 타임아웃');
+              return [];
+            },
+          );
+
+          debugPrint('로드된 사진 수: ${loadedPhotos.length}');
+
+          // 사진이 없으면 빈 목록 표시
+          if (loadedPhotos.isEmpty) {
+            debugPrint('로드된 사진이 없음');
+            photos.value = [];
+            displayPhotos.value = [];
+            isLoading.value = false;
+            return;
+          }
+
           photos.value = loadedPhotos;
 
           // 휴지통에 없는 사진만 표시 목록에 추가
           final filteredPhotos = loadedPhotos
               .where((photo) => !photo.isInTrash)
               .toList();
+          debugPrint('필터링된 사진 수: ${filteredPhotos.length}');
           displayPhotos.value = filteredPhotos;
 
-          // 초기 로드된 사진들의 썸네일을 미리 로드
-          _preloadThumbnails(filteredPhotos);
+          // 초기 로드된 사진들의 썸네일을 미리 로드 (백그라운드에서)
+          Future.microtask(() => _preloadThumbnails(filteredPhotos));
+        } else {
+          debugPrint('권한 없음, 빈 목록 표시');
+          photos.value = [];
+          displayPhotos.value = [];
         }
       } catch (e) {
         debugPrint('사진 로드 중 오류: $e');
+        // 오류 발생 시 빈 목록 표시
+        photos.value = [];
+        displayPhotos.value = [];
       } finally {
-        isLoading.value = false;
+        // 로딩 상태 해제
+        if (context.mounted) {
+          isLoading.value = false;
+          debugPrint('사진 로드 완료, 로딩 상태 해제');
+        }
       }
     }
 
@@ -243,7 +301,14 @@ class GridViewScreen extends HookWidget {
     useEffect(() {
       // 화면이 처음 표시될 때만 로드
       if (!hasAttemptedInitialLoad.value) {
-        loadPhotos();
+        debugPrint('초기 데이터 로드 시작');
+
+        // 약간의 지연 후 로드 시작 (UI 초기화 후)
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (context.mounted) {
+            loadPhotos();
+          }
+        });
       }
       return null;
     }, []);

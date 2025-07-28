@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'screens/splash_screen.dart';
 import 'screens/photo_swipe_screen.dart';
-import 'screens/grid_view_screen.dart';
+import 'screens/simple_grid_screen.dart'; // 변경: 간단한 그리드 화면 임포트
 import 'widgets/adaptive_background.dart';
 import 'models/photo_model.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -208,7 +208,7 @@ class HomeScreen extends HookWidget {
           );
         case 1:
           // 그리드 화면에 동일한 photoService 인스턴스 전달
-          return GridViewScreen(photoService: photoService);
+          return SimpleGridScreen(photoService: photoService);
         case 2:
           // 중복 사진 관리 화면
           return DuplicatePhotosScreen(

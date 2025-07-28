@@ -177,95 +177,264 @@ class PhotoService {
 
   // 권한 요청
   Future<bool> requestPermission() async {
-    // 먼저 photo_manager의 권한 요청
-    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    debugPrint('권한 요청 시작');
 
-    // 안드로이드에서 추가 권한 확인
-    if (!ps.isAuth) {
+    // 안드로이드 13(API 33) 이상에서는 READ_MEDIA_IMAGES 권한 필요
+    // 안드로이드 12 이하에서는 READ_EXTERNAL_STORAGE 권한 필요
+    try {
+      // 먼저 photo_manager의 권한 요청
+      final PermissionState ps = await PhotoManager.requestPermissionExtend();
+      debugPrint('photo_manager 권한 상태: ${ps.isAuth}');
+
+      if (ps.isAuth) {
+        return true;
+      }
+
+      debugPrint('photo_manager 권한 거부됨, permission_handler로 시도');
+
       // permission_handler를 사용하여 직접 권한 요청
-      if (await Permission.photos.request().isGranted ||
-          await Permission.storage.request().isGranted ||
-          await Permission.mediaLibrary.request().isGranted) {
+      // 안드로이드 13 이상
+      final photos = await Permission.photos.request();
+      debugPrint('Permission.photos 상태: ${photos.isGranted}');
+
+      // 안드로이드 12 이하
+      final storage = await Permission.storage.request();
+      debugPrint('Permission.storage 상태: ${storage.isGranted}');
+
+      // 미디어 라이브러리 (iOS)
+      final media = await Permission.mediaLibrary.request();
+      debugPrint('Permission.mediaLibrary 상태: ${media.isGranted}');
+
+      // 추가 권한 시도 (안드로이드 13 이상)
+      await Permission.accessMediaLocation.request();
+
+      if (photos.isGranted || storage.isGranted || media.isGranted) {
         // 권한이 부여되었으므로 photo_manager 권한 다시 확인
         final PermissionState newPs =
             await PhotoManager.requestPermissionExtend();
+        debugPrint('photo_manager 권한 재확인: ${newPs.isAuth}');
+
+        // 마지막 시도 - 직접 PhotoManager 초기화
+        if (!newPs.isAuth) {
+          debugPrint('PhotoManager 초기화 시도');
+          await PhotoManager.clearFileCache();
+          await PhotoManager.setIgnorePermissionCheck(true);
+          final finalPs = await PhotoManager.requestPermissionExtend();
+          debugPrint('최종 권한 상태: ${finalPs.isAuth}');
+          return finalPs.isAuth;
+        }
+
         return newPs.isAuth;
       }
 
       // 사용자에게 설정으로 이동하도록 안내
       debugPrint('사진 접근 권한이 거부되었습니다. 설정에서 권한을 허용해주세요.');
       return false;
+    } catch (e) {
+      debugPrint('권한 요청 중 오류 발생: $e');
+      return false;
     }
-
-    return ps.isAuth;
   }
 
   // 사진 로드
   Future<List<PhotoModel>> loadPhotos() async {
+    debugPrint('loadPhotos 호출됨 - PhotoService');
     _currentPage = 0;
 
-    final permitted = await requestPermission();
-    if (!permitted) {
-      return [];
-    }
-
-    if (_recentAlbum == null) {
-      final albums = await PhotoManager.getAssetPathList(
-        onlyAll: true,
-        type: RequestType.image,
-      );
-      if (albums.isEmpty) {
+    try {
+      // 권한 확인
+      final permitted = await requestPermission();
+      debugPrint('권한 확인 결과: $permitted');
+      if (!permitted) {
+        debugPrint('권한 없음, 빈 목록 반환');
         return [];
       }
-      _recentAlbum = albums.first;
+
+      // PhotoManager 초기화 시도
+      try {
+        debugPrint('PhotoManager 초기화 시도');
+        await PhotoManager.clearFileCache();
+        await PhotoManager.setIgnorePermissionCheck(true);
+      } catch (e) {
+        debugPrint('PhotoManager 초기화 오류 (무시): $e');
+      }
+
+      // 앨범 로드
+      try {
+        debugPrint('앨범 로드 시작');
+        final albums =
+            await PhotoManager.getAssetPathList(
+              onlyAll: true,
+              type: RequestType.image,
+              hasAll: true,
+            ).timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {
+                debugPrint('앨범 로드 타임아웃');
+                return [];
+              },
+            );
+
+        debugPrint('앨범 수: ${albums.length}');
+
+        if (albums.isEmpty) {
+          debugPrint('앨범이 없음, 빈 목록 반환');
+          return [];
+        }
+
+        _recentAlbum = albums.first;
+        debugPrint('최근 앨범 설정됨: ${_recentAlbum?.name}');
+      } catch (e) {
+        debugPrint('앨범 로드 오류: $e');
+        return [];
+      }
+
+      // 에셋 로드 (직접 방식 시도)
+      try {
+        debugPrint('에셋 로드 시작: 직접 방식');
+
+        // 직접 에셋 로드 시도
+        final List<AssetEntity> assets = await _recentAlbum!
+            .getAssetListRange(start: 0, end: _pageSize)
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () {
+                debugPrint('직접 에셋 로드 타임아웃');
+                return [];
+              },
+            );
+
+        debugPrint('직접 로드된 에셋 수: ${assets.length}');
+
+        if (assets.isNotEmpty) {
+          _currentPage++;
+
+          // 에셋으로 PhotoModel 생성
+          final List<PhotoModel> photos = [];
+          for (final asset in assets) {
+            try {
+              final isInTrash = _trashBin.containsKey(asset.id);
+              final trashDate = _trashBin[asset.id];
+              photos.add(
+                PhotoModel(
+                  asset: asset,
+                  isInTrash: isInTrash,
+                  trashDate: trashDate,
+                ),
+              );
+            } catch (e) {
+              debugPrint('PhotoModel 생성 오류: $e');
+              // 개별 오류는 무시하고 계속 진행
+            }
+          }
+
+          debugPrint('반환할 사진 모델 수 (직접 방식): ${photos.length}');
+          return photos;
+        }
+      } catch (e) {
+        debugPrint('직접 에셋 로드 오류 (페이징 방식으로 대체): $e');
+      }
+
+      // 페이징 방식으로 에셋 로드 (대체 방식)
+      try {
+        debugPrint('에셋 로드 시작: 페이징 방식 (대체)');
+        final assets = await _recentAlbum!
+            .getAssetListPaged(page: _currentPage, size: _pageSize)
+            .timeout(
+              const Duration(seconds: 5),
+              onTimeout: () {
+                debugPrint('페이징 에셋 로드 타임아웃');
+                return [];
+              },
+            );
+
+        debugPrint('페이징 로드된 에셋 수: ${assets.length}');
+
+        if (assets.isEmpty) {
+          debugPrint('에셋이 없음, 빈 목록 반환');
+          return [];
+        }
+
+        _currentPage++;
+
+        // 에셋으로 PhotoModel 생성
+        final List<PhotoModel> photos = [];
+        for (final asset in assets) {
+          try {
+            final isInTrash = _trashBin.containsKey(asset.id);
+            final trashDate = _trashBin[asset.id];
+            photos.add(
+              PhotoModel(
+                asset: asset,
+                isInTrash: isInTrash,
+                trashDate: trashDate,
+              ),
+            );
+          } catch (e) {
+            debugPrint('PhotoModel 생성 오류: $e');
+            // 개별 오류는 무시하고 계속 진행
+          }
+        }
+
+        debugPrint('반환할 사진 모델 수 (페이징 방식): ${photos.length}');
+        return photos;
+      } catch (e) {
+        debugPrint('페이징 에셋 로드 오류: $e');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('사진 로드 중 일반 오류: $e');
+      return [];
     }
-
-    final assets = await _recentAlbum!.getAssetListPaged(
-      page: _currentPage,
-      size: _pageSize,
-    );
-
-    _currentPage++;
-
-    final List<PhotoModel> photos = [];
-    for (final asset in assets) {
-      final isInTrash = _trashBin.containsKey(asset.id);
-      final trashDate = _trashBin[asset.id];
-      photos.add(
-        PhotoModel(asset: asset, isInTrash: isInTrash, trashDate: trashDate),
-      );
-    }
-
-    return photos;
   }
 
   // 추가 사진 로드
   Future<List<PhotoModel>> loadMorePhotos() async {
+    debugPrint('loadMorePhotos 호출됨 - 페이지: $_currentPage');
+
     if (_recentAlbum == null) {
+      debugPrint('최근 앨범이 없음, 빈 목록 반환');
       return [];
     }
 
-    final assets = await _recentAlbum!.getAssetListPaged(
-      page: _currentPage,
-      size: _pageSize,
-    );
-
-    if (assets.isEmpty) {
-      return [];
-    }
-
-    _currentPage++;
-
-    final List<PhotoModel> photos = [];
-    for (final asset in assets) {
-      final isInTrash = _trashBin.containsKey(asset.id);
-      final trashDate = _trashBin[asset.id];
-      photos.add(
-        PhotoModel(asset: asset, isInTrash: isInTrash, trashDate: trashDate),
+    try {
+      final assets = await _recentAlbum!.getAssetListPaged(
+        page: _currentPage,
+        size: _pageSize,
       );
-    }
+      debugPrint('추가 로드된 에셋 수: ${assets.length}');
 
-    return photos;
+      if (assets.isEmpty) {
+        debugPrint('더 이상 에셋이 없음');
+        return [];
+      }
+
+      _currentPage++;
+
+      final List<PhotoModel> photos = [];
+      for (final asset in assets) {
+        try {
+          final isInTrash = _trashBin.containsKey(asset.id);
+          final trashDate = _trashBin[asset.id];
+          photos.add(
+            PhotoModel(
+              asset: asset,
+              isInTrash: isInTrash,
+              trashDate: trashDate,
+            ),
+          );
+        } catch (e) {
+          debugPrint('PhotoModel 생성 오류: $e');
+          // 개별 오류는 무시하고 계속 진행
+        }
+      }
+
+      debugPrint('반환할 추가 사진 모델 수: ${photos.length}');
+      return photos;
+    } catch (e) {
+      debugPrint('추가 사진 로드 오류: $e');
+      return [];
+    }
   }
 
   // 휴지통으로 이동
