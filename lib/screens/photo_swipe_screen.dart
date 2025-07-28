@@ -210,11 +210,11 @@ class PhotoSwipeScreen extends HookWidget {
           centerTitle: true,
           actions: [
             // 그리드 보기 버튼
-            IconButton(
-              icon: const Icon(Icons.grid_view),
-              onPressed: navigateToGrid,
-              tooltip: '그리드 보기',
-            ),
+            // IconButton(
+            //   icon: const Icon(Icons.grid_view),
+            //   onPressed: navigateToGrid,
+            //   tooltip: '그리드 보기',
+            // ),
             // 휴지통 버튼
             IconButton(
               icon: const Icon(Icons.delete_outline),
