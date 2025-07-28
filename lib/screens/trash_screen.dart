@@ -77,7 +77,7 @@ class TrashScreen extends HookWidget {
       if (confirm == true) {
         // 모든 사진 복원
         for (final photo in List<PhotoModel>.from(trashPhotos.value)) {
-          await photoService.restoreFromTrash(photo);
+          photoService.restoreFromTrash(photo);
         }
 
         refreshTrash();

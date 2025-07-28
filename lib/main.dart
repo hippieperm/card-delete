@@ -8,6 +8,7 @@ import 'widgets/adaptive_background.dart';
 import 'models/photo_model.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'services/photo_service.dart';
+import 'screens/duplicate_photos_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,6 +137,28 @@ class HomeScreen extends HookWidget {
     // 사진 서비스 인스턴스 생성 (공유)
     final photoService = useMemoized(() => PhotoService(), []);
 
+    // 모든 사진 목록 상태 (중복 사진 검색에 사용)
+    final allPhotos = useState<List<PhotoModel>>([]);
+
+    // 사진 로드 함수
+    Future<void> loadAllPhotos() async {
+      final photos = await photoService.loadPhotos();
+      allPhotos.value = photos;
+
+      // 더 많은 사진 로드
+      while (true) {
+        final morePhotos = await photoService.loadMorePhotos();
+        if (morePhotos.isEmpty) break;
+        allPhotos.value = [...allPhotos.value, ...morePhotos];
+      }
+    }
+
+    // 앱 시작 시 사진 로드
+    useEffect(() {
+      loadAllPhotos();
+      return null;
+    }, []);
+
     // 현재 화면 위젯을 생성하는 함수
     Widget getScreen(int index) {
       switch (index) {
@@ -149,6 +172,12 @@ class HomeScreen extends HookWidget {
         case 1:
           // 그리드 화면에 동일한 photoService 인스턴스 전달
           return GridViewScreen(photoService: photoService);
+        case 2:
+          // 중복 사진 관리 화면
+          return DuplicatePhotosScreen(
+            photoService: photoService,
+            allPhotos: allPhotos.value,
+          );
         default:
           return PhotoSwipeScreen(
             onPhotoChanged: (photo) {
@@ -178,6 +207,7 @@ class HomeScreen extends HookWidget {
           destinations: const [
             NavigationDestination(icon: Icon(Icons.swipe), label: '스와이프'),
             NavigationDestination(icon: Icon(Icons.grid_view), label: '그리드'),
+            NavigationDestination(icon: Icon(Icons.content_copy), label: '중복'),
           ],
         ),
       ),
