@@ -177,7 +177,26 @@ class PhotoService {
 
   // 권한 요청
   Future<bool> requestPermission() async {
+    // 먼저 photo_manager의 권한 요청
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
+
+    // 안드로이드에서 추가 권한 확인
+    if (!ps.isAuth) {
+      // permission_handler를 사용하여 직접 권한 요청
+      if (await Permission.photos.request().isGranted ||
+          await Permission.storage.request().isGranted ||
+          await Permission.mediaLibrary.request().isGranted) {
+        // 권한이 부여되었으므로 photo_manager 권한 다시 확인
+        final PermissionState newPs =
+            await PhotoManager.requestPermissionExtend();
+        return newPs.isAuth;
+      }
+
+      // 사용자에게 설정으로 이동하도록 안내
+      debugPrint('사진 접근 권한이 거부되었습니다. 설정에서 권한을 허용해주세요.');
+      return false;
+    }
+
     return ps.isAuth;
   }
 

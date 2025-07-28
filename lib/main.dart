@@ -10,13 +10,18 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'services/photo_service.dart';
 import 'screens/duplicate_photos_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 세로 모드만 지원
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // 앱 시작 시 권한 미리 요청
+  final photoService = PhotoService();
+  await photoService.requestPermission();
+
   runApp(const MyApp());
 }
 
@@ -133,6 +138,7 @@ class HomeScreen extends HookWidget {
   Widget build(BuildContext context) {
     final selectedIndex = useState(0);
     final currentPhoto = useState<PhotoModel?>(null);
+    final hasPermission = useState<bool?>(null);
 
     // 사진 서비스 인스턴스 생성 (공유)
     final photoService = useMemoized(() => PhotoService(), []);
@@ -153,9 +159,40 @@ class HomeScreen extends HookWidget {
       }
     }
 
-    // 앱 시작 시 사진 로드
+    // 권한 요청 함수
+    Future<void> checkPermission() async {
+      final permitted = await photoService.requestPermission();
+      hasPermission.value = permitted;
+
+      if (permitted) {
+        loadAllPhotos();
+      } else {
+        // 권한이 없는 경우 사용자에게 안내
+        if (context.mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('권한 필요'),
+              content: const Text('사진 접근 권한이 필요합니다. 설정에서 권한을 허용해주세요.'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    checkPermission(); // 권한 다시 확인
+                  },
+                  child: const Text('확인'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    }
+
+    // 앱 시작 시 권한 확인 및 사진 로드
     useEffect(() {
-      loadAllPhotos();
+      checkPermission();
       return null;
     }, []);
 
