@@ -13,17 +13,66 @@ class GridViewScreen extends HookWidget {
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
+  // 로딩 중인 썸네일 추적
+  static final Set<String> _loadingThumbnails = {};
 
   @override
   Widget build(BuildContext context) {
     final photoService = useMemoized(() => PhotoService(), []);
     final photos = useState<List<PhotoModel>>([]);
+    final displayPhotos = useState<List<PhotoModel>>([]);
     final isLoading = useState(true);
     final isLoadingMore = useState(false);
     final hasPermission = useState(false);
     final deletedCount = useState(0);
     final scrollController = useScrollController();
     final selectedPhotos = useState<Set<String>>({});
+
+    // 썸네일 로드 함수
+    Future<Uint8List?> loadThumbnail(PhotoModel photo, {int size = 200}) async {
+      final cacheKey = '${photo.asset.id}_$size';
+
+      // 캐시에 있으면 캐시에서 반환
+      if (_thumbnailCache.containsKey(cacheKey)) {
+        return _thumbnailCache[cacheKey];
+      }
+
+      // 이미 로딩 중이면 null 반환
+      if (_loadingThumbnails.contains(cacheKey)) {
+        return null;
+      }
+
+      // 로딩 중 표시
+      _loadingThumbnails.add(cacheKey);
+
+      try {
+        final data = await photo.asset.thumbnailDataWithSize(
+          ThumbnailSize(size, size),
+          quality: 80,
+        );
+
+        if (data != null) {
+          // 캐시에 저장
+          _thumbnailCache[cacheKey] = data;
+          return data;
+        }
+      } catch (e) {
+        debugPrint('썸네일 로드 오류: $e');
+      } finally {
+        // 로딩 중 표시 제거
+        _loadingThumbnails.remove(cacheKey);
+      }
+
+      return null;
+    }
+
+    // 썸네일 미리 로드
+    Future<void> _preloadThumbnails(List<PhotoModel> photosToPreload) async {
+      for (final photo in photosToPreload) {
+        // 백그라운드에서 썸네일 로드 (결과를 기다리지 않음)
+        loadThumbnail(photo, size: 200);
+      }
+    }
 
     // 추가 사진 로드
     Future<void> loadMorePhotos() async {
@@ -33,7 +82,22 @@ class GridViewScreen extends HookWidget {
       try {
         final morePhotos = await photoService.loadMorePhotos();
         if (morePhotos.isNotEmpty) {
+          // 전체 사진 목록 업데이트
           photos.value = [...photos.value, ...morePhotos];
+
+          // 표시할 사진 목록 업데이트 (휴지통에 없는 사진만)
+          final newDisplayPhotos = [...displayPhotos.value];
+          for (final photo in morePhotos) {
+            if (!photo.isInTrash) {
+              newDisplayPhotos.add(photo);
+            }
+          }
+          displayPhotos.value = newDisplayPhotos;
+
+          // 새로 로드된 사진들의 썸네일을 미리 로드
+          _preloadThumbnails(
+            morePhotos.where((photo) => !photo.isInTrash).toList(),
+          );
         }
       } finally {
         isLoadingMore.value = false;
@@ -53,33 +117,6 @@ class GridViewScreen extends HookWidget {
       return () => scrollController.removeListener(onScroll);
     }, [scrollController]);
 
-    // 썸네일 로드 함수
-    Future<Uint8List?> loadThumbnail(PhotoModel photo, {int size = 200}) async {
-      final cacheKey = '${photo.asset.id}_$size';
-
-      // 캐시에 있으면 캐시에서 반환
-      if (_thumbnailCache.containsKey(cacheKey)) {
-        return _thumbnailCache[cacheKey];
-      }
-
-      try {
-        final data = await photo.asset.thumbnailDataWithSize(
-          ThumbnailSize(size, size),
-          quality: 80,
-        );
-
-        if (data != null) {
-          // 캐시에 저장
-          _thumbnailCache[cacheKey] = data;
-          return data;
-        }
-      } catch (e) {
-        debugPrint('썸네일 로드 오류: $e');
-      }
-
-      return null;
-    }
-
     // 사진 로드 함수
     Future<void> loadPhotos() async {
       isLoading.value = true;
@@ -88,10 +125,20 @@ class GridViewScreen extends HookWidget {
         hasPermission.value = permissionGranted;
 
         if (permissionGranted) {
+          // 전체 사진 목록 로드
           final loadedPhotos = await photoService.loadPhotos();
           photos.value = loadedPhotos;
 
-          if (photos.value.isEmpty) {
+          // 휴지통에 없는 사진만 표시 목록에 추가
+          final filteredPhotos = loadedPhotos
+              .where((photo) => !photo.isInTrash)
+              .toList();
+          displayPhotos.value = filteredPhotos;
+
+          // 초기 로드된 사진들의 썸네일을 미리 로드
+          _preloadThumbnails(filteredPhotos);
+
+          if (displayPhotos.value.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('표시할 사진이 없습니다.'),
@@ -136,7 +183,7 @@ class GridViewScreen extends HookWidget {
       if (selectedPhotos.value.isEmpty) return;
 
       final selectedIds = selectedPhotos.value;
-      final photosToDelete = photos.value
+      final photosToDelete = displayPhotos.value
           .where((photo) => selectedIds.contains(photo.asset.id))
           .toList();
 
@@ -145,12 +192,12 @@ class GridViewScreen extends HookWidget {
         photoService.moveToTrash(photo);
       }
 
-      // 삭제된 사진을 목록에서 제거
-      final updatedPhotos = photos.value
+      // 삭제된 사진을 표시 목록에서 제거
+      final updatedDisplayPhotos = displayPhotos.value
           .where((photo) => !selectedIds.contains(photo.asset.id))
           .toList();
 
-      photos.value = updatedPhotos;
+      displayPhotos.value = updatedDisplayPhotos;
       deletedCount.value += photosToDelete.length;
 
       // 선택 초기화
@@ -171,9 +218,9 @@ class GridViewScreen extends HookWidget {
               }
 
               // 목록에 다시 추가
-              final restoredPhotos = List<PhotoModel>.from(photos.value);
+              final restoredPhotos = List<PhotoModel>.from(displayPhotos.value);
               restoredPhotos.addAll(photosToDelete);
-              photos.value = restoredPhotos;
+              displayPhotos.value = restoredPhotos;
               deletedCount.value -= photosToDelete.length;
             },
           ),
@@ -245,7 +292,7 @@ class GridViewScreen extends HookWidget {
             )
           : !hasPermission.value
           ? _buildPermissionDenied(context)
-          : photos.value.isEmpty
+          : displayPhotos.value.isEmpty
           ? _buildNoPhotos(context)
           : GridView.builder(
               controller: scrollController,
@@ -256,19 +303,15 @@ class GridViewScreen extends HookWidget {
                 crossAxisSpacing: 2,
                 childAspectRatio: 1.0,
               ),
-              itemCount: photos.value.length + (isLoadingMore.value ? 3 : 0),
+              itemCount: displayPhotos.value.length,
+              cacheExtent: 500, // 스크롤 캐시 확장
               itemBuilder: (context, index) {
-                // 로딩 인디케이터 표시
-                if (index >= photos.value.length) {
-                  return const Center(
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  );
-                }
-
-                final photo = photos.value[index];
+                final photo = displayPhotos.value[index];
                 final isSelected = selectedPhotos.value.contains(
                   photo.asset.id,
                 );
+                final cacheKey = '${photo.asset.id}_200';
+                final isCached = _thumbnailCache.containsKey(cacheKey);
 
                 return GestureDetector(
                   onTap: () {
@@ -288,50 +331,52 @@ class GridViewScreen extends HookWidget {
                     fit: StackFit.expand,
                     children: [
                       // 썸네일 이미지
-                      FutureBuilder<Uint8List?>(
-                        future: loadThumbnail(photo),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return Container(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.surfaceVariant,
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
+                      isCached
+                          ? Image.memory(
+                              _thumbnailCache[cacheKey]!,
+                              fit: BoxFit.cover,
+                              cacheWidth: 200,
+                              cacheHeight: 200,
+                              filterQuality: FilterQuality.medium,
+                              gaplessPlayback: true,
+                            )
+                          : FutureBuilder<Uint8List?>(
+                              key: ValueKey('thumbnail_${photo.asset.id}'),
+                              future: loadThumbnail(photo),
+                              builder: (context, snapshot) {
+                                if (!snapshot.hasData) {
+                                  return Container(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceVariant,
+                                  );
+                                }
 
-                          if (snapshot.hasError ||
-                              !snapshot.hasData ||
-                              snapshot.data == null) {
-                            return Container(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              child: const Center(
-                                child: Icon(Icons.error_outline, size: 30),
-                              ),
-                            );
-                          }
+                                if (snapshot.hasError ||
+                                    snapshot.data == null) {
+                                  return Container(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.errorContainer,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.error_outline,
+                                        size: 30,
+                                      ),
+                                    ),
+                                  );
+                                }
 
-                          return Image.memory(
-                            snapshot.data!,
-                            fit: BoxFit.cover,
-                            cacheWidth: 200,
-                            cacheHeight: 200,
-                            filterQuality: FilterQuality.medium,
-                            gaplessPlayback: true,
-                          );
-                        },
-                      ),
+                                return Image.memory(
+                                  snapshot.data!,
+                                  fit: BoxFit.cover,
+                                  cacheWidth: 200,
+                                  cacheHeight: 200,
+                                  filterQuality: FilterQuality.medium,
+                                  gaplessPlayback: true,
+                                );
+                              },
+                            ),
 
                       // 선택 표시 오버레이
                       if (isSelected)
@@ -344,29 +389,6 @@ class GridViewScreen extends HookWidget {
                               Icons.check_circle,
                               color: Colors.white,
                               size: 40,
-                            ),
-                          ),
-                        ),
-
-                      // 휴지통 표시
-                      if (photo.isInTrash)
-                        Positioned(
-                          right: 5,
-                          top: 5,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Icon(
-                              Icons.delete_rounded,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onErrorContainer,
-                              size: 16,
                             ),
                           ),
                         ),

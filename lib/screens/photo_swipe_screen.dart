@@ -22,6 +22,7 @@ class PhotoSwipeScreen extends HookWidget {
   Widget build(BuildContext context) {
     final photoService = useMemoized(() => PhotoService(), []);
     final photos = useState<List<PhotoModel>>([]);
+    final displayPhotos = useState<List<PhotoModel>>([]);
     final isLoading = useState(true);
     final isLoadingMore = useState(false);
     final hasPermission = useState(false);
@@ -43,7 +44,16 @@ class PhotoSwipeScreen extends HookWidget {
       try {
         final morePhotos = await photoService.loadMorePhotos();
         if (morePhotos.isNotEmpty) {
+          // 전체 사진 목록 업데이트
           photos.value = [...photos.value, ...morePhotos];
+
+          // 휴지통에 없는 사진만 표시 목록에 추가
+          final newPhotos = morePhotos
+              .where((photo) => !photo.isInTrash)
+              .toList();
+          if (newPhotos.isNotEmpty) {
+            displayPhotos.value = [...displayPhotos.value, ...newPhotos];
+          }
         }
       } finally {
         isLoadingMore.value = false;
@@ -58,7 +68,8 @@ class PhotoSwipeScreen extends HookWidget {
       currentCardIndex.value = currentIndex;
 
       // 마지막 카드에 가까워지면 추가 로드
-      if (!isUsingDummyData.value && currentIndex >= photos.value.length - 3) {
+      if (!isUsingDummyData.value &&
+          currentIndex >= displayPhotos.value.length - 3) {
         loadMorePhotos();
       }
     }
@@ -74,7 +85,13 @@ class PhotoSwipeScreen extends HookWidget {
           final loadedPhotos = await photoService.loadPhotos();
           photos.value = loadedPhotos;
 
-          if (photos.value.isEmpty) {
+          // 휴지통에 없는 사진만 표시 목록에 추가
+          final filteredPhotos = loadedPhotos
+              .where((photo) => !photo.isInTrash)
+              .toList();
+          displayPhotos.value = filteredPhotos;
+
+          if (displayPhotos.value.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('표시할 사진이 없습니다.'),
@@ -105,17 +122,18 @@ class PhotoSwipeScreen extends HookWidget {
 
     // 사진 삭제 함수 (휴지통으로 이동)
     Future<void> deletePhoto(int index) async {
-      if (photos.value.isEmpty || index >= photos.value.length) return;
+      if (displayPhotos.value.isEmpty || index >= displayPhotos.value.length)
+        return;
 
-      final photo = photos.value[index];
+      final photo = displayPhotos.value[index];
 
       // 휴지통으로 이동
-      photoService.moveToTrash(photo);
+      await photoService.moveToTrash(photo);
 
       // 삭제된 사진을 목록에서 제거
-      final updatedPhotos = List<PhotoModel>.from(photos.value);
+      final updatedPhotos = List<PhotoModel>.from(displayPhotos.value);
       updatedPhotos.removeAt(index);
-      photos.value = updatedPhotos;
+      displayPhotos.value = updatedPhotos;
 
       deletedCount.value++;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -131,13 +149,13 @@ class PhotoSwipeScreen extends HookWidget {
               photoService.restoreFromTrash(photo);
 
               // 목록에 다시 추가
-              final restoredPhotos = List<PhotoModel>.from(photos.value);
+              final restoredPhotos = List<PhotoModel>.from(displayPhotos.value);
               if (index < restoredPhotos.length) {
                 restoredPhotos.insert(index, photo);
               } else {
                 restoredPhotos.add(photo);
               }
-              photos.value = restoredPhotos;
+              displayPhotos.value = restoredPhotos;
               deletedCount.value--;
             },
           ),
@@ -208,7 +226,7 @@ class PhotoSwipeScreen extends HookWidget {
             )
           : !hasPermission.value
           ? _buildPermissionDenied(context)
-          : photos.value.isEmpty
+          : displayPhotos.value.isEmpty
           ? _buildNoPhotos(context)
           : Column(
               children: [
@@ -216,11 +234,11 @@ class PhotoSwipeScreen extends HookWidget {
                 Expanded(
                   child: CardSwiper(
                     controller: controller,
-                    cardsCount: photos.value.length,
+                    cardsCount: displayPhotos.value.length,
                     cardBuilder:
                         (context, index, percentThresholdX, percentThresholdY) {
                           // 인덱스 범위 확인
-                          if (index >= photos.value.length) {
+                          if (index >= displayPhotos.value.length) {
                             return Container(
                               color: Theme.of(
                                 context,
@@ -234,9 +252,9 @@ class PhotoSwipeScreen extends HookWidget {
                           // 드래그 중에는 이미 생성된 카드를 재사용하기 위해 ValueKey 사용
                           final card = RepaintBoundary(
                             key: ValueKey(
-                              'photo_card_${photos.value[index].asset.id}',
+                              'photo_card_${displayPhotos.value[index].asset.id}',
                             ),
-                            child: PhotoCard(photo: photos.value[index]),
+                            child: PhotoCard(photo: displayPhotos.value[index]),
                           );
 
                           // 스와이프 방향에 따른 오버레이 추가
@@ -286,7 +304,7 @@ class PhotoSwipeScreen extends HookWidget {
                         },
                     onSwipe: (previousIndex, currentIndex, direction) {
                       // 사진이 없으면 스와이프 무시
-                      if (photos.value.isEmpty) return false;
+                      if (displayPhotos.value.isEmpty) return false;
 
                       // 현재 인덱스 업데이트 및 썸네일 미리 로드
                       onCardChanged(previousIndex, currentIndex);
@@ -307,14 +325,18 @@ class PhotoSwipeScreen extends HookWidget {
                     maxAngle: 30.0, // 최대 회전 각도 제한
                     isLoop: true, // 무한 루프 활성화
                     duration: const Duration(milliseconds: 400), // 애니메이션 지속 시간
-                    initialIndex: initialIndex < photos.value.length
+                    initialIndex: initialIndex < displayPhotos.value.length
                         ? initialIndex
                         : 0,
                   ),
                 ),
 
                 // 하단 컨트롤 버튼
-                _buildBottomControls(context, controller, photos.value.isEmpty),
+                _buildBottomControls(
+                  context,
+                  controller,
+                  displayPhotos.value.isEmpty,
+                ),
               ],
             ),
     );

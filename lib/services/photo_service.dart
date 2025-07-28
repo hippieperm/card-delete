@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:convert';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/photo_model.dart';
 import 'package:flutter/material.dart';
 
@@ -150,23 +152,156 @@ class PhotoService {
   // 휴지통에 있는 사진 목록
   final List<PhotoModel> _trashBin = [];
 
+  // SharedPreferences 키
+  static const String _trashBinKey = 'trash_bin_data';
+
+  // 싱글톤 인스턴스
+  static final PhotoService _instance = PhotoService._internal();
+
+  // 팩토리 생성자
+  factory PhotoService() {
+    return _instance;
+  }
+
+  // 내부 생성자
+  PhotoService._internal() {
+    // 초기화 시 휴지통 데이터 로드
+    _loadTrashBin();
+  }
+
+  // 휴지통 데이터 저장
+  Future<void> _saveTrashBin() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 휴지통 데이터 직렬화
+      final List<Map<String, dynamic>> serializedData = _trashBin
+          .map(
+            (photo) => {
+              'assetId': photo.asset.id,
+              'trashDate': photo.trashDate?.toIso8601String(),
+            },
+          )
+          .toList();
+
+      // JSON으로 변환하여 저장
+      final String jsonData = jsonEncode(serializedData);
+      await prefs.setString(_trashBinKey, jsonData);
+
+      print('휴지통 데이터 저장 완료: ${_trashBin.length}개');
+    } catch (e) {
+      print('휴지통 데이터 저장 중 오류 발생: $e');
+    }
+  }
+
+  // 휴지통 데이터 로드
+  Future<void> _loadTrashBin() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? jsonData = prefs.getString(_trashBinKey);
+
+      if (jsonData == null || jsonData.isEmpty) {
+        print('저장된 휴지통 데이터 없음');
+        return;
+      }
+
+      // JSON 파싱
+      final List<dynamic> serializedData = jsonDecode(jsonData);
+
+      // 휴지통 초기화
+      _trashBin.clear();
+
+      // 저장된 ID 목록 (실제 에셋 로드 시 사용)
+      final List<String> trashAssetIds = [];
+      final Map<String, DateTime?> trashDates = {};
+
+      // 각 항목의 ID와 삭제 날짜 추출
+      for (final item in serializedData) {
+        final String assetId = item['assetId'];
+        final String? trashDateStr = item['trashDate'];
+
+        trashAssetIds.add(assetId);
+        trashDates[assetId] = trashDateStr != null
+            ? DateTime.parse(trashDateStr)
+            : null;
+      }
+
+      // 실제 에셋 로드 (비어 있으면 건너뜀)
+      if (trashAssetIds.isEmpty) return;
+
+      // 사진 권한 확인
+      final hasPermission = await requestPermission();
+      if (!hasPermission) {
+        print('휴지통 데이터 로드를 위한 사진 접근 권한이 없습니다.');
+        return;
+      }
+
+      // 앨범 로드
+      final albums = await PhotoManager.getAssetPathList(
+        onlyAll: true,
+        type: RequestType.image,
+      );
+
+      if (albums.isEmpty) {
+        print('앨범이 없어 휴지통 데이터를 로드할 수 없습니다.');
+        return;
+      }
+
+      // 최근 앨범 선택
+      final recentAlbum = albums.first;
+
+      // 모든 사진 로드 (이 방식은 비효율적일 수 있지만 AssetEntity.fromIds가 없는 경우 대안)
+      final allAssets = await recentAlbum.getAssetListRange(
+        start: 0,
+        end: 1000, // 최대 1000개까지만 로드 (휴지통에 있는 사진 찾기 위함)
+      );
+
+      // 휴지통에 있는 사진 찾기
+      for (final assetId in trashAssetIds) {
+        // 해당 ID를 가진 에셋 찾기
+        try {
+          final asset = allAssets.firstWhere((asset) => asset.id == assetId);
+
+          // 에셋을 찾았으면 휴지통에 추가
+          final photo = PhotoModel(
+            asset: asset,
+            isInTrash: true,
+            trashDate: trashDates[assetId],
+          );
+          _trashBin.add(photo);
+        } catch (e) {
+          // 에셋을 찾지 못한 경우 (이미 삭제되었거나 접근할 수 없는 경우)
+          print('휴지통 에셋을 찾을 수 없음: $assetId');
+        }
+      }
+
+      print('휴지통 데이터 로드 완료: ${_trashBin.length}개');
+    } catch (e) {
+      print('휴지통 데이터 로드 중 오류 발생: $e');
+    }
+  }
+
   // 휴지통 목록 가져오기
   List<PhotoModel> getTrashPhotos() {
     return List.unmodifiable(_trashBin);
   }
 
   // 휴지통으로 사진 이동
-  void moveToTrash(PhotoModel photo) {
+  Future<void> moveToTrash(PhotoModel photo) async {
     photo.moveToTrash();
     if (!_trashBin.contains(photo)) {
       _trashBin.add(photo);
+      // 휴지통 상태 저장
+      await _saveTrashBin();
     }
   }
 
   // 휴지통에서 사진 복원
-  void restoreFromTrash(PhotoModel photo) {
+  Future<void> restoreFromTrash(PhotoModel photo) async {
     photo.restoreFromTrash();
     _trashBin.remove(photo);
+    // 휴지통 상태 저장
+    await _saveTrashBin();
   }
 
   // 휴지통 비우기
@@ -187,6 +322,9 @@ class PhotoService {
         _trashBin.removeWhere((photo) => result.contains(photo.asset.id));
       }
 
+      // 휴지통 상태 저장
+      await _saveTrashBin();
+
       print('휴지통 비우기 완료: ${result.length}개 삭제됨');
     } catch (e) {
       print('휴지통 비우기 중 오류 발생: $e');
@@ -198,6 +336,8 @@ class PhotoService {
     final result = await deletePhoto(photo.asset);
     if (result) {
       _trashBin.remove(photo);
+      // 휴지통 상태 저장
+      await _saveTrashBin();
     }
     return result;
   }
@@ -293,8 +433,32 @@ class PhotoService {
 
       print('추가 사진 로드: ${assets.length}장, 총 페이지: $_currentPage');
 
-      // 사진 모델로 변환
-      return assets.map((asset) => PhotoModel(asset: asset)).toList();
+      // 사진 모델로 변환 (휴지통에 있는지 확인)
+      final List<PhotoModel> photos = [];
+      for (final asset in assets) {
+        // 휴지통에 있는 사진인지 확인
+        bool isInTrash = false;
+        DateTime? trashDate;
+
+        // 휴지통에서 일치하는 사진 찾기
+        for (final trashPhoto in _trashBin) {
+          if (trashPhoto.asset.id == asset.id) {
+            isInTrash = true;
+            trashDate = trashPhoto.trashDate;
+            break;
+          }
+        }
+
+        // 사진 모델 생성
+        final photo = PhotoModel(
+          asset: asset,
+          isInTrash: isInTrash,
+          trashDate: trashDate,
+        );
+        photos.add(photo);
+      }
+
+      return photos;
     } catch (e) {
       print('추가 사진 로드 중 오류 발생: $e');
       return [];
