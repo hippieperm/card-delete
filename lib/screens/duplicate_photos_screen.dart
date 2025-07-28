@@ -105,13 +105,23 @@ class DuplicatePhotosScreen extends HookWidget {
 
     // 사진 선택/해제 토글
     void togglePhotoSelection(String photoId) {
+      debugPrint(
+        '토글 시작: photoId=$photoId, 현재 선택=${selectedPhotos.value.contains(photoId)}',
+      );
+
       final newSelection = Set<String>.from(selectedPhotos.value);
       if (newSelection.contains(photoId)) {
+        debugPrint('사진 선택 해제: $photoId');
         newSelection.remove(photoId);
       } else {
+        debugPrint('사진 선택: $photoId');
         newSelection.add(photoId);
       }
+
       selectedPhotos.value = newSelection;
+      debugPrint(
+        '토글 완료: 새 선택=${selectedPhotos.value.contains(photoId)}, 선택 개수=${selectedPhotos.value.length}',
+      );
     }
 
     // 그룹 내 모든 사진 선택 (첫 번째 제외)
@@ -438,27 +448,49 @@ class DuplicatePhotosScreen extends HookWidget {
                         children: [
                           // 사진 썸네일
                           GestureDetector(
-                            onTap: () => togglePhotoSelection(photo.asset.id),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: PhotoCard(photo: photo),
+                            onTap: () {
+                              debugPrint('사진 탭됨: ${photo.asset.id}');
+                              togglePhotoSelection(photo.asset.id);
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: PhotoCard(photo: photo),
+                              ),
                             ),
                           ),
 
                           // 선택 표시 오버레이
                           if (isSelected)
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Center(
-                                child: Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                  size: 40,
+                            GestureDetector(
+                              onTap: () {
+                                debugPrint('체크 영역 탭됨: ${photo.asset.id}');
+                                togglePhotoSelection(photo.asset.id);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                curve: Curves.easeInOut,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.primary.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.check_circle,
+                                    color: Colors.white,
+                                    size: 40,
+                                  ),
                                 ),
                               ),
                             ),
