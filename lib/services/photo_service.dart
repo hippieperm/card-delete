@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -641,6 +642,12 @@ class PhotoService {
     // 이미 계산된 해시 캐시
     final Map<String, String> hashCache = {};
 
+    // 파일 크기 맵 (크기가 비슷한 사진들만 비교하기 위함)
+    final Map<int, List<PhotoModel>> sizeMap = {};
+
+    // 크기 버킷 (10KB 단위로 그룹화)
+    final int sizeBucket = 10 * 1024; // 10KB
+
     try {
       // 캐시된 중복 사진 정보 로드
       await _loadDuplicateCache();
@@ -653,33 +660,84 @@ class PhotoService {
           .where((p) => !p.isInTrash)
           .toList();
 
+      debugPrint('중복 사진 스캔 시작: ${validPhotos.length}개 사진');
+
+      // 1단계: 모든 사진의 파일 크기 로드
       for (final photo in validPhotos) {
-        // 진행률 업데이트
+        // 진행률 업데이트 (50%까지 파일 크기 로드)
         processedCount++;
-        final double progress = processedCount / totalCount;
+        final double progress = processedCount / (totalCount * 2);
         onProgress?.call(progress);
 
-        // 이미 해시가 계산된 경우 캐시에서 가져옴
-        String? hash = hashCache[photo.asset.id];
-
-        if (hash == null) {
-          // 썸네일 로드
-          final Uint8List? thumbnail = await _loadThumbnail(photo.asset);
-          if (thumbnail == null) continue;
-
-          // 이미지 해시 계산
-          hash = _calculateImageHash(thumbnail);
-          hashCache[photo.asset.id] = hash;
+        // 파일 크기 로드
+        if (photo.fileSize == null) {
+          await photo.loadFileSize();
         }
 
-        // 해시 맵에 추가
-        if (!hashMap.containsKey(hash)) {
-          hashMap[hash] = [];
+        // 파일 크기가 없으면 건너뜀
+        if (photo.fileSize == null) continue;
+
+        // 파일 크기를 버킷으로 그룹화 (비슷한 크기의 파일들끼리 비교)
+        final int bucket = (photo.fileSize! ~/ sizeBucket) * sizeBucket;
+
+        if (!sizeMap.containsKey(bucket)) {
+          sizeMap[bucket] = [];
         }
-        hashMap[hash]!.add(photo);
+        sizeMap[bucket]!.add(photo);
       }
 
+      debugPrint('파일 크기 기준 그룹 수: ${sizeMap.length}');
+
+      // 크기가 비슷한 그룹 내에서만 해시 계산 및 비교
+      processedCount = 0;
+      int totalGroups = 0;
+
+      // 각 크기 버킷에 대해 처리
+      for (final bucket in sizeMap.keys) {
+        final List<PhotoModel> sizeGroup = sizeMap[bucket]!;
+
+        // 그룹 내 사진이 1개뿐이면 중복이 없으므로 건너뜀
+        if (sizeGroup.length <= 1) continue;
+
+        totalGroups++;
+        debugPrint(
+          '크기 그룹 처리 중: ${bucket ~/ 1024}KB 근처, ${sizeGroup.length}개 사진',
+        );
+
+        // 이 그룹 내의 모든 사진에 대해 해시 계산
+        for (final photo in sizeGroup) {
+          // 진행률 업데이트 (50%~100%)
+          processedCount++;
+          final double progress = 0.5 + (processedCount / (totalCount * 2));
+          onProgress?.call(progress);
+
+          // 이미 해시가 계산된 경우 캐시에서 가져옴
+          String? hash = hashCache[photo.asset.id];
+
+          if (hash == null) {
+            // 썸네일 로드
+            final Uint8List? thumbnail = await _loadThumbnail(photo.asset);
+            if (thumbnail == null) continue;
+
+            // 이미지 해시 계산
+            hash = _calculateImageHash(thumbnail);
+            hashCache[photo.asset.id] = hash;
+          }
+
+          // 해시 맵에 추가
+          if (!hashMap.containsKey(hash)) {
+            hashMap[hash] = [];
+          }
+          hashMap[hash]!.add(photo);
+        }
+      }
+
+      debugPrint('해시 계산 완료: ${hashMap.keys.length}개 해시 그룹');
+
       // 중복된 항목만 필터링 (2개 이상인 경우)
+      int duplicateGroupCount = 0;
+      int totalDuplicates = 0;
+
       hashMap.forEach((hash, photoList) {
         if (photoList.length > 1) {
           // 날짜 기준으로 정렬 (최신 사진이 먼저 표시)
@@ -687,8 +745,13 @@ class PhotoService {
             (a, b) => b.asset.createDateTime.compareTo(a.asset.createDateTime),
           );
           _duplicateGroups[hash] = photoList;
+
+          duplicateGroupCount++;
+          totalDuplicates += photoList.length;
         }
       });
+
+      debugPrint('중복 그룹 수: $duplicateGroupCount, 총 중복 사진 수: $totalDuplicates');
 
       // 중복 사진 정보 캐시에 저장
       await _saveDuplicateCache();
@@ -741,8 +804,48 @@ class PhotoService {
 
   // 이미지 해시 계산 (간단한 perceptual hash)
   String _calculateImageHash(Uint8List imageData) {
-    // MD5 해시 사용 (간단한 구현)
-    final digest = md5.convert(imageData);
+    // 기본 MD5 해시는 바이너리 데이터가 조금만 달라도 완전히 다른 해시값을 생성합니다.
+    // 이미지 크기, 메타데이터, 압축률 등에 따라 같은 이미지도 다른 해시값을 가질 수 있습니다.
+
+    // 이미지 특성을 더 잘 반영하는 해시를 만들기 위해 파일 크기와 일부 데이터를 조합합니다.
+    // 이는 완벽한 방법은 아니지만, 단순 MD5 해시보다 더 나은 결과를 제공할 수 있습니다.
+
+    // 이미지 데이터 크기
+    final int dataSize = imageData.length;
+
+    // 이미지 데이터의 일부만 사용 (처음, 중간, 끝부분의 일정 바이트)
+    // 이는 전체 데이터를 해싱하는 것보다 효율적이면서도 특성을 잡아낼 수 있습니다.
+    final int sampleSize = 1024; // 샘플링할 바이트 수
+    final List<int> samples = [];
+
+    // 처음 부분 (헤더 정보 포함)
+    final int headerSize = min(sampleSize, dataSize);
+    samples.addAll(imageData.sublist(0, headerSize));
+
+    // 중간 부분 (이미지 데이터의 중심부)
+    if (dataSize > sampleSize * 2) {
+      final int midStart = (dataSize ~/ 2) - (sampleSize ~/ 2);
+      final int midEnd = min(midStart + sampleSize, dataSize);
+      samples.addAll(imageData.sublist(midStart, midEnd));
+    }
+
+    // 끝부분 (메타데이터 등 포함)
+    if (dataSize > sampleSize) {
+      final int tailStart = max(0, dataSize - sampleSize);
+      samples.addAll(imageData.sublist(tailStart));
+    }
+
+    // 이미지 크기 정보를 해시에 포함
+    final List<int> sizeBytes = utf8.encode(dataSize.toString());
+    samples.addAll(sizeBytes);
+
+    // 최종 해시 계산
+    final digest = md5.convert(samples);
+
+    debugPrint(
+      '이미지 해시 계산: 크기=${dataSize}B, 샘플=${samples.length}B, 해시=${digest.toString().substring(0, 8)}...',
+    );
+
     return digest.toString();
   }
 

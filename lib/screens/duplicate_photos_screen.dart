@@ -24,22 +24,29 @@ class DuplicatePhotosScreen extends HookWidget {
     final isScanning = useState<bool>(false);
     final scanProgress = useState<double>(0.0);
 
-    // 중복 사진 스캔
-    void scanForDuplicates() async {
+    // 중복 사진 스캔 함수
+    Future<void> scanDuplicates() async {
       isScanning.value = true;
       scanProgress.value = 0.0;
       duplicateGroups.value = {};
       selectedPhotos.value = {};
 
+      debugPrint('중복 사진 스캔 시작 - 총 ${allPhotos.length}개 사진');
+
       try {
-        final result = await photoService.findDuplicatePhotos(
+        // 중복 사진 찾기
+        final duplicates = await photoService.findDuplicatePhotos(
           allPhotos,
           onProgress: (progress) {
             scanProgress.value = progress;
+            if (progress % 0.1 < 0.01) {
+              debugPrint('스캔 진행률: ${(progress * 100).toStringAsFixed(0)}%');
+            }
           },
         );
 
-        duplicateGroups.value = result;
+        // 결과 업데이트
+        duplicateGroups.value = duplicates;
 
         // 처음에 모든 그룹을 펼침
         final newExpandedGroups = <String>{};
@@ -47,6 +54,42 @@ class DuplicatePhotosScreen extends HookWidget {
           newExpandedGroups.add(groupId);
         }
         expandedGroups.value = newExpandedGroups;
+
+        final int totalGroups = duplicates.length;
+        int totalDuplicates = 0;
+        duplicates.forEach((_, photos) {
+          totalDuplicates += photos.length;
+        });
+
+        debugPrint('중복 스캔 완료 - $totalGroups개 그룹, $totalDuplicates개 중복 사진 발견');
+
+        if (totalGroups == 0) {
+          // 중복 사진이 없는 경우
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('중복 사진 없음'),
+              content: const Text('중복된 사진을 찾을 수 없습니다.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('확인'),
+                ),
+              ],
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('중복 스캔 오류: $e');
+        // 오류 발생 시 처리
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('중복 사진 스캔 중 오류가 발생했습니다: $e'),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
       } finally {
         isScanning.value = false;
       }
@@ -239,7 +282,7 @@ class DuplicatePhotosScreen extends HookWidget {
 
     // 초기 스캔 실행
     useEffect(() {
-      scanForDuplicates();
+      scanDuplicates();
       return null;
     }, []);
 
@@ -251,7 +294,7 @@ class DuplicatePhotosScreen extends HookWidget {
           // 스캔 버튼
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: isScanning.value ? null : scanForDuplicates,
+            onPressed: isScanning.value ? null : scanDuplicates,
             tooltip: '중복 사진 다시 스캔',
           ),
 
