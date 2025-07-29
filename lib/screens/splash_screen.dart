@@ -168,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '소중한 추억을 정리하세요',
+                          '사진을 빠르게 정리하세요',
                           style: TextStyle(
                             fontSize: 16,
                             color: colorScheme.onBackground.withOpacity(0.7),

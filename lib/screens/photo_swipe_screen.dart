@@ -1,6 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/photo_model.dart';
 import '../services/photo_service.dart';
@@ -37,6 +38,7 @@ class PhotoSwipeScreen extends HookWidget {
     // 드래그 중인지 여부를 추적하는 상태
     final isDragging = useState(false);
     final currentPhoto = useState<PhotoModel?>(null);
+    final currentSortOrder = useState<SortOrder>(photoService.currentSortOrder);
 
     // 사진 로드 함수
     Future<void> loadPhotos() async {
@@ -119,11 +121,162 @@ class PhotoSwipeScreen extends HookWidget {
       }
     }
 
+    // 정렬 방식 변경
+    void changeSortOrder(SortOrder newSortOrder) async {
+      if (currentSortOrder.value == newSortOrder) return;
+
+      currentSortOrder.value = newSortOrder;
+      photoService.setSortOrder(newSortOrder);
+      await photoService.saveSortOrderPreference();
+      loadPhotos(); // 새로운 정렬로 사진 다시 로드
+    }
+
+    // 정렬 옵션 다이얼로그 표시
+    void showSortOptions() {
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        barrierColor: Colors.black54,
+        elevation: 0,
+        transitionAnimationController: AnimationController(
+          vsync: Navigator.of(context),
+          duration: const Duration(milliseconds: 300),
+        ),
+        builder: (context) {
+          return AnimatedPadding(
+            padding: MediaQuery.of(context).viewInsets,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0, 0.3),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: ModalRoute.of(context)!.animation!,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
+              child: FadeTransition(
+                opacity: CurvedAnimation(
+                  parent: ModalRoute.of(context)!.animation!,
+                  curve: Curves.easeOut,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(28),
+                      topRight: Radius.circular(28),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 10,
+                        spreadRadius: 0,
+                      ),
+                    ],
+                  ),
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 드래그 핸들
+                      Container(
+                        margin: const EdgeInsets.only(top: 12),
+                        height: 4,
+                        width: 32,
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+
+                      // 제목
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.sort,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 16),
+                            Text(
+                              '정렬 방식',
+                              style: Theme.of(context).textTheme.titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurface,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const Divider(),
+
+                      // 정렬 옵션들
+                      _AnimatedSortOptionList(
+                        options: [
+                          SortOptionItem(
+                            icon: Icons.calendar_today,
+                            title: '날짜 최신순',
+                            subtitle: '최근에 찍은 사진부터 표시',
+                            isSelected:
+                                currentSortOrder.value == SortOrder.dateNewest,
+                            onTap: () => changeSortOrder(SortOrder.dateNewest),
+                          ),
+                          SortOptionItem(
+                            icon: Icons.calendar_today_outlined,
+                            title: '날짜 오래된순',
+                            subtitle: '오래된 사진부터 표시',
+                            isSelected:
+                                currentSortOrder.value == SortOrder.dateOldest,
+                            onTap: () => changeSortOrder(SortOrder.dateOldest),
+                          ),
+                          SortOptionItem(
+                            icon: Icons.photo_size_select_small,
+                            title: '파일 크기 작은순',
+                            subtitle: '작은 파일부터 표시',
+                            isSelected:
+                                currentSortOrder.value == SortOrder.sizeAsc,
+                            onTap: () => changeSortOrder(SortOrder.sizeAsc),
+                          ),
+                          SortOptionItem(
+                            icon: Icons.photo_size_select_large,
+                            title: '파일 크기 큰순',
+                            subtitle: '큰 파일부터 표시',
+                            isSelected:
+                                currentSortOrder.value == SortOrder.sizeDesc,
+                            onTap: () => changeSortOrder(SortOrder.sizeDesc),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     // 초기 데이터 로드
     useEffect(() {
-      loadPhotos();
-
-      // cleanup 함수: 컴포넌트가 unmount될 때 호출됨
+      photoService.loadSortOrderPreference().then((_) {
+        currentSortOrder.value = photoService.currentSortOrder;
+        loadPhotos();
+      });
       return () {
         // 명시적으로 아무것도 하지 않음 (ValueNotifier는 자동으로 dispose됨)
         // 이렇게 하면 FlutterError가 발생하지 않음
@@ -230,12 +383,12 @@ class PhotoSwipeScreen extends HookWidget {
           title: const Text('사진 정리하기'),
           centerTitle: true,
           actions: [
-            // 그리드 보기 버튼
-            // IconButton(
-            //   icon: const Icon(Icons.grid_view),
-            //   onPressed: navigateToGrid,
-            //   tooltip: '그리드 보기',
-            // ),
+            // 정렬 버튼
+            IconButton(
+              icon: const Icon(Icons.sort),
+              onPressed: showSortOptions,
+              tooltip: '정렬',
+            ),
             // 휴지통 버튼
             IconButton(
               icon: const Icon(Icons.delete_outline),
@@ -518,6 +671,149 @@ class PhotoSwipeScreen extends HookWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// 정렬 옵션 아이템 모델
+class SortOptionItem {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  SortOptionItem({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+}
+
+// 애니메이션 정렬 옵션 목록
+class _AnimatedSortOptionList extends StatelessWidget {
+  final List<SortOptionItem> options;
+
+  const _AnimatedSortOptionList({Key? key, required this.options})
+    : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: options.length,
+      itemBuilder: (context, index) {
+        final option = options[index];
+
+        // 각 아이템에 지연 애니메이션 적용
+        return AnimatedBuilder(
+          animation: ModalRoute.of(context)!.animation!,
+          builder: (context, child) {
+            final animationValue = ModalRoute.of(context)!.animation!.value;
+            final delay = index * 0.1;
+            final value = (animationValue - delay).clamp(0.0, 1.0);
+
+            return Opacity(
+              opacity: value,
+              child: Transform.translate(
+                offset: Offset(0, 20 * (1 - value)),
+                child: child,
+              ),
+            );
+          },
+          child: _buildSortOptionItem(
+            context: context,
+            icon: option.icon,
+            title: option.title,
+            subtitle: option.subtitle,
+            isSelected: option.isSelected,
+            onTap: option.onTap,
+          ),
+        );
+      },
+    );
+  }
+
+  // 정렬 옵션 아이템 위젯
+  Widget _buildSortOptionItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: () {
+        onTap();
+        Navigator.pop(context);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(
+                        context,
+                      ).colorScheme.surfaceVariant.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(
+                icon,
+                color: isSelected
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: isSelected
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
