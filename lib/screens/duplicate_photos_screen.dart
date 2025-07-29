@@ -23,32 +23,74 @@ class DuplicatePhotosScreen extends HookWidget {
     final selectedPhotos = useState<Set<String>>({});
     final isScanning = useState<bool>(false);
     final scanProgress = useState<double>(0.0);
+    final localAllPhotos = useState<List<PhotoModel>>(allPhotos);
+
+    // 최신 사진 목록 로드 함수
+    Future<List<PhotoModel>> _loadLatestPhotos() async {
+      debugPrint('최신 사진 목록 로드 시작');
+
+      // 모든 사진 로드
+      final photos = await photoService.loadPhotos();
+      List<PhotoModel> result = List.from(photos);
+
+      // 더 많은 사진 로드
+      while (true) {
+        final morePhotos = await photoService.loadMorePhotos();
+        if (morePhotos.isEmpty) break;
+        result = [...result, ...morePhotos];
+      }
+
+      debugPrint('최신 사진 목록 로드 완료: ${result.length}개');
+      return result;
+    }
 
     // 중복 사진 스캔 함수
     Future<void> scanDuplicates() async {
       isScanning.value = true;
       scanProgress.value = 0.0;
-      duplicateGroups.value = {};
+
+      // 기존 선택 상태는 초기화하지만, 중복 그룹은 유지
       selectedPhotos.value = {};
 
-      debugPrint('중복 사진 스캔 시작 - 총 ${allPhotos.length}개 사진');
+      debugPrint('중복 사진 스캔 시작');
 
       try {
-        // 중복 사진 찾기
+        // 먼저 캐시된 중복 그룹을 가져와서 표시 (즉시 표시)
+        final cachedGroups = photoService.getDuplicateGroups();
+        if (cachedGroups.isNotEmpty) {
+          debugPrint('캐시된 중복 그룹 표시: ${cachedGroups.length}개 그룹');
+          duplicateGroups.value = Map.from(cachedGroups);
+
+          // 처음에 모든 그룹을 펼침
+          final newExpandedGroups = <String>{};
+          for (final groupId in duplicateGroups.value.keys) {
+            newExpandedGroups.add(groupId);
+          }
+          expandedGroups.value = newExpandedGroups;
+        }
+
+        // 최신 사진 목록 로드
+        final latestPhotos = await _loadLatestPhotos();
+        localAllPhotos.value = latestPhotos;
+
+        debugPrint('중복 사진 스캔 시작 - 총 ${localAllPhotos.value.length}개 사진');
+
+        // 백그라운드에서 새로운 중복 스캔 시작
         final duplicates = await photoService.findDuplicatePhotos(
-          allPhotos,
+          localAllPhotos.value,
           onProgress: (progress) {
             scanProgress.value = progress;
             if (progress % 0.1 < 0.01) {
               debugPrint('스캔 진행률: ${(progress * 100).toStringAsFixed(0)}%');
             }
           },
+          clearCache: true, // 캐시 초기화 옵션 활성화
         );
 
-        // 결과 업데이트
+        // 결과 업데이트 (새로운 스캔 결과로)
         duplicateGroups.value = duplicates;
 
-        // 처음에 모든 그룹을 펼침
+        // 처음에 모든 그룹을 펼침 (새로운 스캔 결과에 대해)
         final newExpandedGroups = <String>{};
         for (final groupId in duplicateGroups.value.keys) {
           newExpandedGroups.add(groupId);

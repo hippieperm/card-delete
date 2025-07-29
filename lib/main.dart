@@ -22,6 +22,9 @@ void main() async {
   final photoService = PhotoService();
   await photoService.requestPermission();
 
+  // 휴지통 및 중복 사진 캐시 미리 로드
+  await photoService.preloadCaches();
+
   runApp(const MyApp());
 }
 

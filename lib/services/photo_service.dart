@@ -628,13 +628,19 @@ class PhotoService {
   Future<Map<String, List<PhotoModel>>> findDuplicatePhotos(
     List<PhotoModel> photos, {
     Function(double)? onProgress,
+    bool clearCache = false, // 캐시 초기화 옵션 추가
   }) async {
     if (_isDuplicateScanRunning) {
       return _duplicateGroups;
     }
 
     _isDuplicateScanRunning = true;
-    _duplicateGroups.clear();
+
+    // 캐시 초기화 옵션이 활성화된 경우 기존 중복 그룹 초기화
+    if (clearCache) {
+      debugPrint('중복 파일 캐시 초기화');
+      _duplicateGroups.clear();
+    }
 
     // 이미지 해시 맵 (해시 -> 사진 목록)
     final Map<String, List<PhotoModel>> hashMap = {};
@@ -794,8 +800,65 @@ class PhotoService {
       final String? cacheData = prefs.getString(_duplicatePhotosKey);
 
       if (cacheData != null && cacheData.isNotEmpty) {
-        // 저장된 데이터는 현재 사용하지 않음 (사진이 변경되었을 수 있으므로)
-        // 필요한 경우 여기서 캐시 데이터를 파싱하여 사용할 수 있음
+        debugPrint('중복 사진 캐시 데이터 발견: ${cacheData.length} 바이트');
+
+        try {
+          // 캐시 데이터 파싱
+          final Map<String, dynamic> serializedGroups = jsonDecode(cacheData);
+
+          // 기존 중복 그룹 초기화
+          _duplicateGroups.clear();
+
+          // 캐시된 그룹 정보 복원
+          for (final hash in serializedGroups.keys) {
+            final List<dynamic> assetIds = serializedGroups[hash];
+            final List<String> ids = assetIds
+                .map((id) => id.toString())
+                .toList();
+
+            // 에셋 ID로부터 PhotoModel 객체 복원
+            final List<PhotoModel> photos = [];
+
+            for (final id in ids) {
+              try {
+                // 에셋 엔티티 로드
+                final asset = await AssetEntity.fromId(id);
+                if (asset != null) {
+                  // 휴지통에 있는지 확인
+                  final isInTrash = _trashBin.containsKey(id);
+                  final trashDate = _trashBin[id];
+
+                  // PhotoModel 생성 및 추가
+                  photos.add(
+                    PhotoModel(
+                      asset: asset,
+                      isInTrash: isInTrash,
+                      trashDate: trashDate,
+                    ),
+                  );
+                }
+              } catch (e) {
+                debugPrint('에셋 로드 오류 (ID: $id): $e');
+              }
+            }
+
+            // 유효한 사진이 2개 이상인 경우에만 그룹으로 추가
+            if (photos.length > 1) {
+              // 날짜 기준으로 정렬 (최신 사진이 먼저 표시)
+              photos.sort(
+                (a, b) =>
+                    b.asset.createDateTime.compareTo(a.asset.createDateTime),
+              );
+              _duplicateGroups[hash] = photos;
+            }
+          }
+
+          debugPrint('중복 사진 캐시 로드 완료: ${_duplicateGroups.length}개 그룹');
+        } catch (e) {
+          debugPrint('중복 사진 캐시 파싱 오류: $e');
+        }
+      } else {
+        debugPrint('저장된 중복 사진 캐시 없음');
       }
     } catch (e) {
       debugPrint('중복 사진 캐시 로드 오류: $e');
@@ -961,6 +1024,27 @@ class PhotoService {
       }
     } catch (e) {
       debugPrint('정렬 설정 로드 오류: $e');
+    }
+  }
+
+  // 앱 시작 시 캐시 미리 로드
+  Future<void> preloadCaches() async {
+    debugPrint('캐시 미리 로드 시작');
+
+    try {
+      // 휴지통 데이터 로드
+      await _loadTrashBin();
+      debugPrint('휴지통 데이터 로드 완료');
+
+      // 중복 사진 캐시 로드
+      await _loadDuplicateCache();
+      debugPrint('중복 사진 캐시 로드 완료: ${_duplicateGroups.length}개 그룹');
+
+      // 정렬 설정 로드
+      await loadSortOrderPreference();
+      debugPrint('정렬 설정 로드 완료: $_currentSortOrder');
+    } catch (e) {
+      debugPrint('캐시 미리 로드 오류: $e');
     }
   }
 }
