@@ -8,6 +8,14 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import '../models/photo_model.dart';
 
+// 정렬 방식 열거형
+enum SortOrder {
+  dateNewest, // 날짜 최신순
+  dateOldest, // 날짜 오래된순
+  sizeAsc, // 크기 오름차순 (작은 것부터)
+  sizeDesc, // 크기 내림차순 (큰 것부터)
+}
+
 // 테스트용 더미 에셋 클래스
 class DummyAssetEntity extends AssetEntity {
   final DateTime _createDateTime;
@@ -143,17 +151,12 @@ class DummyAssetEntity extends AssetEntity {
 }
 
 class PhotoService {
-  // 싱글톤 인스턴스
+  // 싱글톤 패턴
   static final PhotoService _instance = PhotoService._internal();
-
-  // 싱글톤 팩토리 생성자
-  factory PhotoService() {
-    return _instance;
-  }
-
-  // 내부 생성자
+  factory PhotoService() => _instance;
   PhotoService._internal() {
     _loadTrashBin();
+    _loadDuplicateCache();
   }
 
   // 휴지통 저장 키
@@ -174,6 +177,17 @@ class PhotoService {
 
   // 썸네일 캐시
   final Map<String, Uint8List> _thumbnailCache = {};
+
+  // 현재 정렬 방식
+  SortOrder _currentSortOrder = SortOrder.dateNewest;
+
+  // 현재 정렬 방식 getter
+  SortOrder get currentSortOrder => _currentSortOrder;
+
+  // 정렬 방식 설정
+  void setSortOrder(SortOrder sortOrder) {
+    _currentSortOrder = sortOrder;
+  }
 
   // 권한 요청
   Future<bool> requestPermission() async {
@@ -236,13 +250,11 @@ class PhotoService {
     }
   }
 
-  // 사진 로드
+  // 사진 로드 함수
   Future<List<PhotoModel>> loadPhotos() async {
     debugPrint('loadPhotos 호출됨 - PhotoService');
     _currentPage = 0;
-
     try {
-      // 권한 확인
       final permitted = await requestPermission();
       debugPrint('권한 확인 결과: $permitted');
       if (!permitted) {
@@ -329,7 +341,14 @@ class PhotoService {
           }
 
           debugPrint('반환할 사진 모델 수 (직접 방식): ${photos.length}');
-          return photos;
+          // 파일 크기 로드 (필요한 경우)
+          if (_currentSortOrder == SortOrder.sizeAsc ||
+              _currentSortOrder == SortOrder.sizeDesc) {
+            await _loadFileSizes(photos);
+          }
+
+          // 정렬 적용
+          return _sortPhotos(photos);
         }
       } catch (e) {
         debugPrint('직접 에셋 로드 오류 (페이징 방식으로 대체): $e');
@@ -377,7 +396,14 @@ class PhotoService {
         }
 
         debugPrint('반환할 사진 모델 수 (페이징 방식): ${photos.length}');
-        return photos;
+        // 파일 크기 로드 (필요한 경우)
+        if (_currentSortOrder == SortOrder.sizeAsc ||
+            _currentSortOrder == SortOrder.sizeDesc) {
+          await _loadFileSizes(photos);
+        }
+
+        // 정렬 적용
+        return _sortPhotos(photos);
       } catch (e) {
         debugPrint('페이징 에셋 로드 오류: $e');
         return [];
@@ -772,5 +798,66 @@ class PhotoService {
 
     // 캐시 업데이트
     _saveDuplicateCache();
+  }
+
+  // 파일 크기 로드
+  Future<void> _loadFileSizes(List<PhotoModel> photos) async {
+    for (final photo in photos) {
+      await photo.loadFileSize();
+    }
+  }
+
+  // 사진 정렬
+  List<PhotoModel> _sortPhotos(List<PhotoModel> photos) {
+    switch (_currentSortOrder) {
+      case SortOrder.dateNewest:
+        photos.sort(
+          (a, b) => b.asset.createDateTime.compareTo(a.asset.createDateTime),
+        );
+        break;
+      case SortOrder.dateOldest:
+        photos.sort(
+          (a, b) => a.asset.createDateTime.compareTo(b.asset.createDateTime),
+        );
+        break;
+      case SortOrder.sizeAsc:
+        photos.sort((a, b) {
+          final sizeA = a.fileSize ?? 0;
+          final sizeB = b.fileSize ?? 0;
+          return sizeA.compareTo(sizeB);
+        });
+        break;
+      case SortOrder.sizeDesc:
+        photos.sort((a, b) {
+          final sizeA = a.fileSize ?? 0;
+          final sizeB = b.fileSize ?? 0;
+          return sizeB.compareTo(sizeA);
+        });
+        break;
+    }
+    return photos;
+  }
+
+  // 정렬 설정 저장
+  Future<void> saveSortOrderPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('sort_order', _currentSortOrder.index);
+    } catch (e) {
+      debugPrint('정렬 설정 저장 오류: $e');
+    }
+  }
+
+  // 정렬 설정 로드
+  Future<void> loadSortOrderPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sortOrderIndex = prefs.getInt('sort_order');
+      if (sortOrderIndex != null && sortOrderIndex < SortOrder.values.length) {
+        _currentSortOrder = SortOrder.values[sortOrderIndex];
+      }
+    } catch (e) {
+      debugPrint('정렬 설정 로드 오류: $e');
+    }
   }
 }
