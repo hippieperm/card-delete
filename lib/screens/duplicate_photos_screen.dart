@@ -107,18 +107,15 @@ class DuplicatePhotosScreen extends HookWidget {
 
         if (totalGroups == 0) {
           // 중복 사진이 없는 경우
-          showDialog(
+          CustomDialog.show(
             context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('중복 사진 없음'),
-              content: const Text('중복된 사진을 찾을 수 없습니다.'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('확인'),
-                ),
-              ],
-            ),
+            title: '중복 사진 없음',
+            message: '중복된 사진을 찾을 수 없습니다.',
+            cancelText: '',
+            confirmText: '확인',
+            icon: Icons.check_circle_outline,
+            iconColor: Theme.of(context).colorScheme.onPrimaryContainer,
+            iconBackgroundColor: Theme.of(context).colorScheme.primaryContainer,
           );
         }
       } catch (e) {
@@ -151,6 +148,22 @@ class DuplicatePhotosScreen extends HookWidget {
         }
       }
 
+      // 삭제 전 확인 다이얼로그 표시
+      final confirmed = await CustomDialog.show(
+        context: context,
+        title: '중복 사진 삭제',
+        message: '선택한 ${photosToDelete.length}장의 중복 사진을 휴지통으로 이동하시겠습니까?',
+        cancelText: '취소',
+        confirmText: '삭제',
+        icon: Icons.delete_outline,
+        iconColor: Theme.of(context).colorScheme.onErrorContainer,
+        iconBackgroundColor: Theme.of(context).colorScheme.errorContainer,
+        isDestructive: true,
+      );
+
+      // 사용자가 취소한 경우
+      if (confirmed != true) return;
+
       await photoService.deleteDuplicatePhotos(photosToDelete);
 
       // 중복 그룹 업데이트
@@ -162,18 +175,15 @@ class DuplicatePhotosScreen extends HookWidget {
 
       // 스낵바 대신 다이얼로그로 알림
       if (!context.mounted) return;
-      showDialog(
+      CustomDialog.show(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('중복 사진 삭제 완료'),
-          content: Text('${photosToDelete.length}장의 중복 사진이 휴지통으로 이동되었습니다.'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('확인'),
-            ),
-          ],
-        ),
+        title: '중복 사진 삭제 완료',
+        message: '${photosToDelete.length}장의 중복 사진이 휴지통으로 이동되었습니다.',
+        cancelText: '',
+        confirmText: '확인',
+        icon: Icons.delete_sweep,
+        iconColor: Theme.of(context).colorScheme.onSecondaryContainer,
+        iconBackgroundColor: Theme.of(context).colorScheme.secondaryContainer,
       );
     }
 
