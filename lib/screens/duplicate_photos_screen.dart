@@ -11,10 +11,10 @@ class DuplicatePhotosScreen extends HookWidget {
   final List<PhotoModel> allPhotos;
 
   const DuplicatePhotosScreen({
-    Key? key,
+    super.key,
     required this.photoService,
     required this.allPhotos,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +26,7 @@ class DuplicatePhotosScreen extends HookWidget {
     final localAllPhotos = useState<List<PhotoModel>>(allPhotos);
 
     // 최신 사진 목록 로드 함수
-    Future<List<PhotoModel>> _loadLatestPhotos() async {
+    Future<List<PhotoModel>> loadLatestPhotos() async {
       debugPrint('최신 사진 목록 로드 시작');
 
       // 모든 사진 로드
@@ -70,7 +70,7 @@ class DuplicatePhotosScreen extends HookWidget {
         }
 
         // 최신 사진 목록 로드
-        final latestPhotos = await _loadLatestPhotos();
+        final latestPhotos = await loadLatestPhotos();
         localAllPhotos.value = latestPhotos;
 
         debugPrint('중복 사진 스캔 시작 - 총 ${localAllPhotos.value.length}개 사진');
@@ -301,7 +301,7 @@ class DuplicatePhotosScreen extends HookWidget {
     }
 
     // 모든 중복 사진이 선택되어 있는지 확인하는 헬퍼 함수
-    bool _isAllDuplicatesSelected() {
+    bool isAllDuplicatesSelected() {
       int totalDuplicates = 0;
       int selectedDuplicates = 0;
 
@@ -320,7 +320,7 @@ class DuplicatePhotosScreen extends HookWidget {
     }
 
     // 특정 그룹의 모든 사진이 선택되어 있는지 확인하는 헬퍼 함수
-    bool _isAllInGroupSelected(List<PhotoModel> group) {
+    bool isAllInGroupSelected(List<PhotoModel> group) {
       if (group.length <= 1) return false;
 
       for (int i = 1; i < group.length; i++) {
@@ -354,10 +354,10 @@ class DuplicatePhotosScreen extends HookWidget {
           if (duplicateGroups.value.isNotEmpty && !isScanning.value)
             IconButton(
               icon: Icon(
-                _isAllDuplicatesSelected() ? Icons.deselect : Icons.select_all,
+                isAllDuplicatesSelected() ? Icons.deselect : Icons.select_all,
               ),
               onPressed: selectAllDuplicates,
-              tooltip: _isAllDuplicatesSelected() ? '모두 선택 해제' : '모든 중복 사진 선택',
+              tooltip: isAllDuplicatesSelected() ? '모두 선택 해제' : '모든 중복 사진 선택',
             ),
         ],
       ),
@@ -473,7 +473,7 @@ class DuplicatePhotosScreen extends HookWidget {
               ListTile(
                 title: Text('중복 그룹 #${index + 1} (${photos.length}장)'),
                 subtitle: Text(
-                  '${selectedCount}장 선택됨',
+                  '$selectedCount장 선택됨',
                   style: TextStyle(
                     color: selectedCount > 0
                         ? Theme.of(context).colorScheme.primary

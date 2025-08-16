@@ -11,8 +11,7 @@ import 'package:photo_manager/photo_manager.dart';
 class SimpleGridScreen extends HookWidget {
   final PhotoService photoService;
 
-  const SimpleGridScreen({Key? key, required this.photoService})
-    : super(key: key);
+  const SimpleGridScreen({super.key, required this.photoService});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +22,7 @@ class SimpleGridScreen extends HookWidget {
     final currentSortOrder = useState<SortOrder>(photoService.currentSortOrder);
 
     // 초기 썸네일 로드
-    Future<void> _loadInitialThumbnails(List<PhotoModel> initialPhotos) async {
+    Future<void> loadInitialThumbnails(List<PhotoModel> initialPhotos) async {
       final newThumbnails = Map<String, Uint8List>.from(thumbnails.value);
 
       for (final photo in initialPhotos) {
@@ -89,7 +88,7 @@ class SimpleGridScreen extends HookWidget {
           debugPrint('간단한 그리드 - 로드된 사진 수: ${filteredPhotos.length}');
 
           // 첫 20개 사진의 썸네일 로드
-          _loadInitialThumbnails(filteredPhotos.take(20).toList());
+          loadInitialThumbnails(filteredPhotos.take(20).toList());
         }
       } catch (e) {
         debugPrint('간단한 그리드 - 사진 로드 오류: $e');
@@ -284,7 +283,7 @@ class SimpleGridScreen extends HookWidget {
     }, []);
 
     // 권한 거부 UI
-    Widget _buildPermissionDenied() {
+    Widget buildPermissionDenied() {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -310,7 +309,7 @@ class SimpleGridScreen extends HookWidget {
     }
 
     // 사진 없음 UI
-    Widget _buildNoPhotos() {
+    Widget buildNoPhotos() {
       return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -348,9 +347,9 @@ class SimpleGridScreen extends HookWidget {
       body: isLoading.value
           ? const Center(child: CircularProgressIndicator())
           : !hasPermission.value
-          ? _buildPermissionDenied()
+          ? buildPermissionDenied()
           : photos.value.isEmpty
-          ? _buildNoPhotos()
+          ? buildNoPhotos()
           : GridView.builder(
               padding: const EdgeInsets.all(2),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -425,8 +424,9 @@ class SimpleGridScreen extends HookWidget {
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    if (bytes < 1024 * 1024 * 1024)
+    if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }
@@ -452,8 +452,7 @@ class SortOptionItem {
 class _AnimatedSortOptionList extends StatelessWidget {
   final List<SortOptionItem> options;
 
-  const _AnimatedSortOptionList({Key? key, required this.options})
-    : super(key: key);
+  const _AnimatedSortOptionList({super.key, required this.options});
 
   @override
   Widget build(BuildContext context) {
@@ -520,7 +519,7 @@ class _AnimatedSortOptionList extends StatelessWidget {
                     ? Theme.of(context).colorScheme.primaryContainer
                     : Theme.of(
                         context,
-                      ).colorScheme.surfaceVariant.withOpacity(0.5),
+                      ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(

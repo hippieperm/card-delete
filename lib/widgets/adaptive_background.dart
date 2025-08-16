@@ -15,14 +15,14 @@ class AdaptiveBackground extends StatefulWidget {
   final Curve transitionCurve;
 
   const AdaptiveBackground({
-    Key? key,
+    super.key,
     required this.child,
     this.photo,
     this.imageData,
     this.enabled = true,
     this.transitionDuration = const Duration(milliseconds: 800),
     this.transitionCurve = Curves.easeInOut,
-  }) : super(key: key);
+  });
 
   @override
   State<AdaptiveBackground> createState() => _AdaptiveBackgroundState();
@@ -159,7 +159,7 @@ class _AdaptiveBackgroundState extends State<AdaptiveBackground> {
           colors: [
             _primaryColor.withOpacity(0.9), // 투명도 증가 (0.8 -> 0.9)
             _secondaryColor.withOpacity(0.5), // 투명도 증가 (0.3 -> 0.5)
-            colorScheme.background.withOpacity(0.95),
+            colorScheme.surface.withOpacity(0.95),
           ],
           stops: const [0.0, 0.5, 1.0], // 중간 색상이 더 넓게 퍼지도록 조정 (0.4 -> 0.5)
         ),

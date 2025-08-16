@@ -108,7 +108,7 @@ class _SplashScreenState extends State<SplashScreen>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: colorScheme.surface,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -171,7 +171,7 @@ class _SplashScreenState extends State<SplashScreen>
                           '사진을 빠르게 정리하세요',
                           style: TextStyle(
                             fontSize: 16,
-                            color: colorScheme.onBackground.withOpacity(0.7),
+                            color: colorScheme.onSurface.withOpacity(0.7),
                             letterSpacing: 0.5,
                           ),
                         ),

@@ -14,7 +14,7 @@ class CustomDialog extends StatefulWidget {
   final bool isDestructive;
 
   const CustomDialog({
-    Key? key,
+    super.key,
     required this.title,
     required this.message,
     this.cancelText = '취소',
@@ -25,7 +25,7 @@ class CustomDialog extends StatefulWidget {
     this.iconBackgroundColor,
     this.onConfirm,
     this.isDestructive = false,
-  }) : super(key: key);
+  });
 
   /// 다이얼로그를 표시하는 정적 메서드
   static Future<bool?> show({

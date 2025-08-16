@@ -80,10 +80,10 @@ class MyApp extends StatelessWidget {
               ),
             ),
             navigationBarTheme: NavigationBarThemeData(
-              labelTextStyle: MaterialStateProperty.all(
+              labelTextStyle: WidgetStateProperty.all(
                 const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
-              iconTheme: MaterialStateProperty.all(
+              iconTheme: WidgetStateProperty.all(
                 const IconThemeData(size: 24),
               ),
               elevation: 3,
@@ -114,10 +114,10 @@ class MyApp extends StatelessWidget {
               ),
             ),
             navigationBarTheme: NavigationBarThemeData(
-              labelTextStyle: MaterialStateProperty.all(
+              labelTextStyle: WidgetStateProperty.all(
                 const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
               ),
-              iconTheme: MaterialStateProperty.all(
+              iconTheme: WidgetStateProperty.all(
                 const IconThemeData(size: 24),
               ),
               elevation: 3,
@@ -135,7 +135,7 @@ class MyApp extends StatelessWidget {
 }
 
 class HomeScreen extends HookWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -12,7 +12,7 @@ import 'package:photo_manager/photo_manager.dart';
 class GridViewScreen extends HookWidget {
   final PhotoService? photoService;
 
-  const GridViewScreen({Key? key, this.photoService}) : super(key: key);
+  const GridViewScreen({super.key, this.photoService});
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -76,7 +76,7 @@ class GridViewScreen extends HookWidget {
     }
 
     // 썸네일 미리 로드
-    Future<void> _preloadThumbnails(List<PhotoModel> photosToPreload) async {
+    Future<void> preloadThumbnails(List<PhotoModel> photosToPreload) async {
       for (final photo in photosToPreload) {
         // 백그라운드에서 썸네일 로드 (결과를 기다리지 않음)
         loadThumbnail(photo, size: 200);
@@ -104,7 +104,7 @@ class GridViewScreen extends HookWidget {
           displayPhotos.value = newDisplayPhotos;
 
           // 새로 로드된 사진들의 썸네일을 미리 로드
-          _preloadThumbnails(
+          preloadThumbnails(
             morePhotos.where((photo) => !photo.isInTrash).toList(),
           );
         }
@@ -202,7 +202,7 @@ class GridViewScreen extends HookWidget {
           displayPhotos.value = filteredPhotos;
 
           // 초기 로드된 사진들의 썸네일을 미리 로드 (백그라운드에서)
-          Future.microtask(() => _preloadThumbnails(filteredPhotos));
+          Future.microtask(() => preloadThumbnails(filteredPhotos));
         } else {
           debugPrint('권한 없음, 빈 목록 표시');
           photos.value = [];
@@ -352,7 +352,7 @@ class GridViewScreen extends HookWidget {
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return Container(
-                          color: Theme.of(context).colorScheme.surfaceVariant,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           child: const Center(
                             child: SizedBox(
                               width: 30,

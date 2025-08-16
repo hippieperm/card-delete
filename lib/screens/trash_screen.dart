@@ -8,7 +8,7 @@ import '../widgets/custom_dialog.dart';
 class TrashScreen extends HookWidget {
   final PhotoService photoService;
 
-  const TrashScreen({Key? key, required this.photoService}) : super(key: key);
+  const TrashScreen({super.key, required this.photoService});
 
   @override
   Widget build(BuildContext context) {
@@ -137,7 +137,7 @@ class TrashScreen extends HookWidget {
                             ),
 
                           // 버튼 행
-                          ButtonBar(
+                          OverflowBar(
                             children: [
                               FilledButton.tonal(
                                 onPressed: () => restorePhoto(photo),

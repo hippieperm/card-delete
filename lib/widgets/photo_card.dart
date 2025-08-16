@@ -10,7 +10,7 @@ class PhotoCard extends StatelessWidget {
   // 이미지 캐싱을 위한 정적 맵
   static final Map<String, Uint8List> imageCache = {};
 
-  const PhotoCard({Key? key, required this.photo}) : super(key: key);
+  const PhotoCard({super.key, required this.photo});
 
   @override
   Widget build(BuildContext context) {
@@ -164,7 +164,7 @@ class PhotoCard extends StatelessWidget {
           return Container(
             color: Theme.of(
               context,
-            ).colorScheme.surfaceVariant.withOpacity(0.3),
+            ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
             child: const Center(
               child: SizedBox(
                 width: 40,

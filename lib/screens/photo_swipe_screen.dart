@@ -17,8 +17,7 @@ class PhotoSwipeScreen extends HookWidget {
   final int initialIndex;
   final Function(PhotoModel?)? onPhotoChanged;
 
-  const PhotoSwipeScreen({Key? key, this.initialIndex = 0, this.onPhotoChanged})
-    : super(key: key);
+  const PhotoSwipeScreen({super.key, this.initialIndex = 0, this.onPhotoChanged});
 
   // 썸네일 캐시
   static final Map<String, Uint8List> _thumbnailCache = {};
@@ -308,8 +307,9 @@ class PhotoSwipeScreen extends HookWidget {
 
     // 사진 삭제 함수 (휴지통으로 이동)
     Future<void> deletePhoto(int index) async {
-      if (displayPhotos.value.isEmpty || index >= displayPhotos.value.length)
+      if (displayPhotos.value.isEmpty || index >= displayPhotos.value.length) {
         return;
+      }
 
       final photo = displayPhotos.value[index];
 
@@ -640,8 +640,8 @@ class PhotoSwipeScreen extends HookWidget {
                       ),
                       elevation: 0,
                     ).copyWith(
-                      overlayColor: MaterialStateProperty.resolveWith<Color?>(
-                        (states) => states.contains(MaterialState.pressed)
+                      overlayColor: WidgetStateProperty.resolveWith<Color?>(
+                        (states) => states.contains(WidgetState.pressed)
                             ? colorScheme.error.withOpacity(0.1)
                             : null,
                       ),
@@ -697,8 +697,7 @@ class SortOptionItem {
 class _AnimatedSortOptionList extends StatelessWidget {
   final List<SortOptionItem> options;
 
-  const _AnimatedSortOptionList({Key? key, required this.options})
-    : super(key: key);
+  const _AnimatedSortOptionList({super.key, required this.options});
 
   @override
   Widget build(BuildContext context) {
@@ -765,7 +764,7 @@ class _AnimatedSortOptionList extends StatelessWidget {
                     ? Theme.of(context).colorScheme.primaryContainer
                     : Theme.of(
                         context,
-                      ).colorScheme.surfaceVariant.withOpacity(0.5),
+                      ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Icon(

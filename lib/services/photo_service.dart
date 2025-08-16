@@ -21,17 +21,14 @@ enum SortOrder {
 class DummyAssetEntity extends AssetEntity {
   final DateTime _createDateTime;
 
-  DummyAssetEntity({
-    required String id,
-    required int width,
-    required int height,
+  const DummyAssetEntity({
+    required super.id,
+    required super.width,
+    required super.height,
     required DateTime createDateTime,
   }) : _createDateTime = createDateTime,
        super(
-         id: id,
-         typeInt: 1, // 이미지 타입
-         width: width,
-         height: height,
+         typeInt: 1,
          duration: 0, // 이미지는 duration이 0
        );
 
